@@ -30,7 +30,7 @@ object Scanner extends App with ScorexLogging {
 
   case class ExtractionResult(spentTrackedInputs: Seq[ExtractedInput], createdOutputs: Seq[ExtractedOutput])
 
-  // ErgoFund pledge script
+  // ErgoFund pledge script, we find pledges by finding boxes (outputs) protected by the script
   val pledgeScriptBytes = ErgoAddressEncoder(0: Byte)
     .fromString("XUFypmadXVvYmBWtiuwDioN1rtj6nSvqgzgWjx1yFmHAVndPaAEgnUvEvEDSkpgZPRmCYeqxewi8ZKZ4Pamp1M9DAdu8d4PgShGRDV9inwzN6TtDeefyQbFXRmKCSJSyzySrGAt16")
     .get
@@ -38,6 +38,7 @@ object Scanner extends App with ScorexLogging {
 
   val pledgeScan = Scan(1, EqualsScanningPredicate(ErgoBox.R1, Values.ByteArrayConstant(pledgeScriptBytes)))
 
+  // We scan for ErgoFund campaign data, stored in outputs with the ErgoFund token
   val campaignTokenId = Base16.decode("08fc8bd24f0eaa011db3342131cb06eb890066ac6d7e6f7fd61fcdd138bd1e2c").get
   val campaignScan = Scan(2, ContainsAssetPredicate(Digest32 @@ campaignTokenId))
 
@@ -78,7 +79,7 @@ object Scanner extends App with ScorexLogging {
 
     val transactions = txsAsJson.as[BlockTransactions].toOption.get.transactions
     transactions.foreach { tx =>
-      tx.inputs.foreach{input =>
+      tx.inputs.foreach { input =>
         // todo: check if a tracked output is spent by the input, please note an output from the same block
         //  could be spent
       }
@@ -95,7 +96,7 @@ object Scanner extends App with ScorexLogging {
     ExtractionResult(Seq.empty, createdOutputs)
   }
 
-  var lastHeight = 504910
+  var lastHeight = 504910 // we start from some recent block
 
   @tailrec
   def step(): Unit = {
@@ -109,7 +110,11 @@ object Scanner extends App with ScorexLogging {
           lastHeight = newHeight
           bestChainHeaderIds += newHeight -> headerId
           val extractionResult = processTransactions(headerId, exampleRules)
-          log.info("Extracted: " + extractionResult.createdOutputs.length + " outputs")
+          val extractedCount = extractionResult.createdOutputs.length
+          log.info("Extracted: " + extractedCount + " outputs")
+          if (extractedCount > 0) {
+            log.info("New Ergofund outputs found: " + extractionResult.createdOutputs)
+          }
           step()
         case None =>
           log.info(s"No block found @ height $newHeight")

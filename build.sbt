@@ -14,7 +14,7 @@ libraryDependencies ++= Seq(
   "io.circe" %% "circe-parser"
 ).map(_ % circeVersion)
 
-libraryDependencies += "org.ergoplatform" %% "ergo" % "v4.0.12-141bff0e-SNAPSHOT"
+libraryDependencies += "org.ergoplatform" %% "ergo" % "v4.0.13-5251a78b-SNAPSHOT"
 
 resolvers ++= Seq("Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Bintray" at "https://jcenter.bintray.com/", //for org.ethereum % leveldbjni-all 
