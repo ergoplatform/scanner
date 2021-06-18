@@ -41,6 +41,7 @@ target
 .bloop/
 .metals/
 .vscode/
+database/
 project/metals.sbt
 
 # scala worksheets
