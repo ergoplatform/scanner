@@ -20,6 +20,15 @@ trait ExtractedBlockComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def mainChain = column[Boolean]("MAIN_CHAIN")
     def * = (id, parentId, height, timestamp, mainChain) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
   }
+
+  class ExtractedBlockForkTable(tag: Tag) extends Table[ExtractedBlockModel](tag, "HEADERS_FORK") {
+    def id = column[String]("ID")
+    def parentId = column[String]("PARENT_ID")
+    def height = column[Int]("HEIGHT")
+    def timestamp = column[Long]("TIMESTAMP")
+    def mainChain = column[Boolean]("MAIN_CHAIN")
+    def * = (id, parentId, height, timestamp, mainChain) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
+  }
 }
 
 @Singleton()
@@ -32,6 +41,7 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
 
 
   val extractedBlocks = TableQuery[ExtractedBlockTable]
+  val extractedBlocksFork = TableQuery[ExtractedBlockForkTable]
 
   /**
    * insert Seq[extractedBlock] into db
@@ -85,5 +95,30 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
   def deleteAll(): Unit = {
     val res = db.run(extractedBlocks.delete)
     Await.result(res, 5.second)
+  }
+
+  /**
+   * @param headerId header id
+   */
+  def migrateForkByHeaderId(headerId: String): Unit = {
+    val header = Await.result(getByHeaderId(headerId), 5.second)
+    db.run(this.extractedBlocksFork ++= header)
+    deleteByHeaderId(headerId)
+  }
+
+  /**
+   * @param headerId header id
+   * @return Header record(s) associated with the id
+   */
+  def getByHeaderId(headerId: String): Future[Seq[ExtractedBlockTable#TableElementType]] = {
+    db.run(extractedBlocks.filter(_.id === headerId).result)
+  }
+
+  /**
+   * @param headerId header id
+   * @return Number of rows deleted
+   */
+  def deleteByHeaderId(headerId: String): Future[Int] = {
+    db.run(extractedBlocks.filter(_.id === headerId).delete)
   }
 }

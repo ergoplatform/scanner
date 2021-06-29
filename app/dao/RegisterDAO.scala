@@ -17,6 +17,13 @@ trait RegisterComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def value = column[String]("VALUE")
     def * = (id, boxId, value) <> (ExtractedRegisterModel.tupled, ExtractedRegisterModel.unapply)
   }
+
+  class RegisterForkTable(tag: Tag) extends Table[ExtractedRegisterModel](tag, "BOX_REGISTERS_FORK") {
+    def id = column[String]("ID")
+    def boxId = column[String]("BOX_ID")
+    def value = column[String]("VALUE")
+    def * = (id, boxId, value) <> (ExtractedRegisterModel.tupled, ExtractedRegisterModel.unapply)
+  }
 }
 
 @Singleton()
@@ -27,7 +34,8 @@ class RegisterDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvi
   import profile.api._
 
   val registers = TableQuery[RegisterTable]
-
+  val registersFork = TableQuery[RegisterForkTable]
+  
   /**
    * inserts a register of box into db
    * @param register register
@@ -57,4 +65,28 @@ class RegisterDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvi
     Await.result(res, 5.second)
   }
 
+  /**
+   * @param boxId box id
+   */
+  def migrateForkByBoxId(boxId: String): Unit = {
+    val inputs = Await.result(getByBoxId(boxId), 5.second)
+    db.run(this.registersFork ++= inputs)
+    deleteByBoxId(boxId)
+  }
+
+  /**
+   * @param boxId box id
+   * @return Input record(s) associated with the header
+   */
+  def getByBoxId(boxId: String): Future[Seq[RegisterTable#TableElementType]] = {
+    db.run(registers.filter(_.boxId === boxId).result)
+  }
+
+  /**
+   * @param boxId box id
+   * @return Number of rows deleted
+   */
+  def deleteByBoxId(boxId: String): Future[Int] = {
+    db.run(registers.filter(_.boxId === boxId).delete)
+  }
 }

@@ -20,6 +20,15 @@ trait AssetComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def value = column[Long]("VALUE")
     def * = (tokenId, boxId, headerId, index, value) <> (ExtractedAssetModel.tupled, ExtractedAssetModel.unapply)
   }
+
+  class AssetForkTable(tag: Tag) extends Table[ExtractedAssetModel](tag, "ASSETS_FORK") {
+    def tokenId = column[String]("TOKEN_ID")
+    def boxId = column[String]("BOX_ID")
+    def headerId = column[String]("HEADER_ID")
+    def index = column[Short]("INDEX")
+    def value = column[Long]("VALUE")
+    def * = (tokenId, boxId, headerId, index, value) <> (ExtractedAssetModel.tupled, ExtractedAssetModel.unapply)
+  }
 }
 
 @Singleton()
@@ -31,6 +40,7 @@ class AssetDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider
   import profile.api._
 
   val assets = TableQuery[AssetTable]
+  val assetsFork = TableQuery[AssetForkTable]
 
   /**
    * inserts a Asset of box into db
@@ -56,6 +66,31 @@ class AssetDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider
   def exists(tokenId: String): Boolean = {
     val res = db.run(assets.filter(_.tokenId === tokenId).exists.result)
     Await.result(res, 5.second)
+  }
+
+  /**
+   * @param headerId header id
+   */
+  def migrateForkByHeaderId(headerId: String): Unit = {
+    val assets = Await.result(getByHeaderId(headerId), 5.second)
+    db.run(this.assetsFork ++= assets)
+    deleteByHeaderId(headerId)
+  }
+
+  /**
+   * @param headerId header id
+   * @return Asset record(s) associated with the header
+   */
+  def getByHeaderId(headerId: String): Future[Seq[AssetTable#TableElementType]] = {
+    db.run(assets.filter(_.headerId === headerId).result)
+  }
+
+  /**
+   * @param headerId header id
+   * @return Number of rows deleted
+   */
+  def deleteByHeaderId(headerId: String): Future[Int] = {
+    db.run(assets.filter(_.headerId === headerId).delete)
   }
 
 }

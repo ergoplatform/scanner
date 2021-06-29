@@ -21,6 +21,15 @@ trait TransactionComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
     def * = (id, headerId, inclusionHeight, timestamp, mainChain) <> (ExtractedTransactionModel.tupled, ExtractedTransactionModel.unapply)
   }
+
+  class TransactionForkTable(tag: Tag) extends Table[ExtractedTransactionModel](tag, "TRANSACTIONS_FORK") {
+    def id = column[String]("ID")
+    def headerId = column[String]("HEADER_ID")
+    def inclusionHeight = column[Int]("INCLUSION_HEIGHT")
+    def timestamp = column[Long]("TIMESTAMP")
+    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
+    def * = (id, headerId, inclusionHeight, timestamp, mainChain) <> (ExtractedTransactionModel.tupled, ExtractedTransactionModel.unapply)
+  }
 }
 
 @Singleton()
@@ -32,6 +41,7 @@ class TransactionDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
   import profile.api._
 
   val transactions = TableQuery[TransactionTable]
+  val transactionsFork = TableQuery[TransactionForkTable]
 
   /**
    * inserts a tx into db
@@ -68,5 +78,30 @@ class TransactionDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
   def deleteAll(): Unit = {
     val res = db.run(transactions.delete)
     Await.result(res, 5.second)
+  }
+
+  /**
+   * @param headerId header id
+   */
+  def migrateForkByHeaderId(headerId: String): Unit = {
+    val transactions = Await.result(getByHeaderId(headerId), 5.second)
+    db.run(this.transactionsFork ++= transactions)
+    deleteByHeaderId(headerId)
+  }
+
+  /**
+   * @param headerId header id
+   * @return Transaction record(s) associated with the header
+   */
+  def getByHeaderId(headerId: String): Future[Seq[TransactionTable#TableElementType]] = {
+    db.run(transactions.filter(_.headerId === headerId).result)
+  }
+
+  /**
+   * @param headerId header id
+   * @return Number of rows deleted
+   */
+  def deleteByHeaderId(headerId: String): Future[Int] = {
+    db.run(transactions.filter(_.headerId === headerId).delete)
   }
 }
