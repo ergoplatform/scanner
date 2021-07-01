@@ -4,6 +4,8 @@ import javax.inject.{Inject, Singleton}
 import models.ExtractedOutputModel
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
+import utils.DbUtils
+
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -110,7 +112,8 @@ class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvide
    * @param headerId header id
    * @return Box id(s) associated with the header
    */
-  def getBoxIdsByHeaderId(headerId: String): Future[Seq[String]] = {
-    db.run(outputs.filter(_.headerId === headerId).map(_.boxId).result)
+  def getBoxIdsByHeaderId(headerId: String): Seq[String] = {
+    val res = db.run(outputs.filter(_.headerId === headerId).map(_.boxId).result)
+    Await.result(res, 5.second)
   }
 }

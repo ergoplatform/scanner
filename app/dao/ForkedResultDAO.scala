@@ -14,22 +14,15 @@ import scala.util.{Failure, Success}
 class ForkedResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, transactionDAO: TransactionDAO, inputDAO: InputDAO, outputDAO: OutputDAO, assetDAO: AssetDAO, registerDAO: RegisterDAO, protected val dbConfigProvider: DatabaseConfigProvider) (implicit executionContext: ExecutionContext)
         extends DbUtils with HasDatabaseConfigProvider[JdbcProfile] {
 
-    private val logger: Logger = Logger(this.getClass)
-
     /**
      * Migrate blocks from a detected fork to alternate tables.
      * @param height height of block to be migrated
      * */
     def migrateBlockByHeight(height: Int): Unit = {
 
-        val headerId: String = extractedBlockDAO.getHeaderIdByHeight(height)    //TODO existing method invoked is blocking
-        val boxQuery: Future[Seq[String]] = outputDAO.getBoxIdsByHeaderId(headerId)
-        var boxIds: Seq[String] = Seq()
-
-        boxQuery onComplete {
-            case Success(boxes) => boxIds ++= boxes
-            case Failure(t) => logger.info(s"Failed to lookup Box Id's ${t.getMessage}")
-        }
+        //TODO below lookups are blocking using Await
+        val headerId: String = extractedBlockDAO.getHeaderIdByHeight(height)
+        val boxIds: Seq[String] = outputDAO.getBoxIdsByHeaderId(headerId)
 
         val action = for {
             _ <- extractedBlockDAO.migrateForkByHeaderId(headerId)
