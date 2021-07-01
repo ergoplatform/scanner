@@ -84,34 +84,33 @@ class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvide
   /**
    * @param headerId header id
    */
-  def migrateForkByHeaderId(headerId: String): Unit = {
-    val outputs = Await.result(getByHeaderId(headerId), 5.second)
-    db.run(this.outputsFork ++= outputs)
-    deleteByHeaderId(headerId)
+  def migrateForkByHeaderId(headerId: String): DBIO[Int] = {
+    getByHeaderId(headerId)
+      .map(outputsFork ++= _)
+      .andThen(deleteByHeaderId(headerId))
   }
 
   /**
    * @param headerId header id
    * @return Output record(s) associated with the header
    */
-  def getByHeaderId(headerId: String): Future[Seq[OutputTable#TableElementType]] = {
-    db.run(outputs.filter(_.headerId === headerId).result)
+  def getByHeaderId(headerId: String): DBIO[Seq[OutputTable#TableElementType]] = {
+    outputs.filter(_.headerId === headerId).result
   }
 
   /**
    * @param headerId header id
    * @return Number of rows deleted
    */
-  def deleteByHeaderId(headerId: String): Future[Int] = {
-    db.run(outputs.filter(_.headerId === headerId).delete)
+  def deleteByHeaderId(headerId: String): DBIO[Int] = {
+    outputs.filter(_.headerId === headerId).delete
   }
 
   /**
    * @param headerId header id
    * @return Box id(s) associated with the header
    */
-  def getBoxIdsByHeaderId(headerId: String): Seq[String] = {
-    val res = db.run(outputs.filter(_.headerId === headerId).map(_.boxId).result)
-    Await.result(res, 5.second)
+  def getBoxIdsByHeaderId(headerId: String): Future[Seq[String]] = {
+    db.run(outputs.filter(_.headerId === headerId).map(_.boxId).result)
   }
 }

@@ -75,25 +75,25 @@ class InputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider
   /**
    * @param headerId header id
    */
-  def migrateForkByHeaderId(headerId: String): Unit = {
-    val inputs = Await.result(getByHeaderId(headerId), 5.second)
-    db.run(this.inputsFork ++= inputs)
-    deleteByHeaderId(headerId)
+  def migrateForkByHeaderId(headerId: String): DBIO[Int] = {
+    getByHeaderId(headerId)
+      .map(inputsFork ++= _)
+      .andThen(deleteByHeaderId(headerId))
   }
 
   /**
    * @param headerId header id
    * @return Input record(s) associated with the header
    */
-  def getByHeaderId(headerId: String): Future[Seq[InputTable#TableElementType]] = {
-    db.run(inputs.filter(_.headerId === headerId).result)
+  def getByHeaderId(headerId: String): DBIO[Seq[InputTable#TableElementType]] = {
+    inputs.filter(_.headerId === headerId).result
   }
 
   /**
    * @param headerId header id
    * @return Number of rows deleted
    */
-  def deleteByHeaderId(headerId: String): Future[Int] = {
-    db.run(inputs.filter(_.headerId === headerId).delete)
+  def deleteByHeaderId(headerId: String): DBIO[Int] = {
+    inputs.filter(_.headerId === headerId).delete
   }
 }

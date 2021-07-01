@@ -66,27 +66,27 @@ class RegisterDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvi
   }
 
   /**
-   * @param boxId box id
+   * @param boxIds box ids
    */
-  def migrateForkByBoxId(boxId: String): Unit = {
-    val inputs = Await.result(getByBoxId(boxId), 5.second)
-    db.run(this.registersFork ++= inputs)
-    deleteByBoxId(boxId)
+  def migrateForkByBoxIds(boxIds: Seq[String]): DBIO[Int] = {
+    getByBoxIds(boxIds)
+      .map(registersFork ++= _)
+      .andThen(deleteByBoxIds(boxIds))
   }
 
   /**
-   * @param boxId box id
+   * @param boxIds box ids
    * @return Input record(s) associated with the header
    */
-  def getByBoxId(boxId: String): Future[Seq[RegisterTable#TableElementType]] = {
-    db.run(registers.filter(_.boxId === boxId).result)
+  def getByBoxIds(boxIds: Seq[String]): DBIO[Seq[RegisterTable#TableElementType]] = {
+    registers.filter(_.boxId.inSet(boxIds)).result
   }
 
   /**
-   * @param boxId box id
+   * @param boxIds box ids
    * @return Number of rows deleted
    */
-  def deleteByBoxId(boxId: String): Future[Int] = {
-    db.run(registers.filter(_.boxId === boxId).delete)
+  def deleteByBoxIds(boxIds: Seq[String]): DBIO[Int] = {
+    registers.filter(_.boxId.inSet(boxIds)).delete
   }
 }

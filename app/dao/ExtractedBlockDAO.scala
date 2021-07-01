@@ -51,7 +51,6 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
     this.extractedBlocks ++= extractedBlocks
   }
 
-
   def save(extractedBlocks: Seq[ExtractedBlockModel]): Future[Unit] = {
     db.run(insert(extractedBlocks)).map(_ => ())
   }
@@ -100,25 +99,25 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
   /**
    * @param headerId header id
    */
-  def migrateForkByHeaderId(headerId: String): Unit = {
-    val header = Await.result(getByHeaderId(headerId), 5.second)
-    db.run(this.extractedBlocksFork ++= header)
-    deleteByHeaderId(headerId)
+  def migrateForkByHeaderId(headerId: String): DBIO[Int] = {
+      getByHeaderId(headerId)
+        .map(extractedBlocksFork ++= _)
+        .andThen(deleteByHeaderId(headerId))
   }
 
   /**
    * @param headerId header id
    * @return Header record(s) associated with the id
    */
-  def getByHeaderId(headerId: String): Future[Seq[ExtractedBlockTable#TableElementType]] = {
-    db.run(extractedBlocks.filter(_.id === headerId).result)
+  def getByHeaderId(headerId: String): DBIO[Seq[ExtractedBlockTable#TableElementType]] = {
+    extractedBlocks.filter(_.id === headerId).result
   }
 
   /**
    * @param headerId header id
    * @return Number of rows deleted
    */
-  def deleteByHeaderId(headerId: String): Future[Int] = {
-    db.run(extractedBlocks.filter(_.id === headerId).delete)
+  def deleteByHeaderId(headerId: String): DBIO[Int] = {
+    extractedBlocks.filter(_.id === headerId).delete
   }
 }

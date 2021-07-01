@@ -71,26 +71,25 @@ class AssetDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider
   /**
    * @param headerId header id
    */
-  def migrateForkByHeaderId(headerId: String): Unit = {
-    val assets = Await.result(getByHeaderId(headerId), 5.second)
-    db.run(this.assetsFork ++= assets)
-    deleteByHeaderId(headerId)
+  def migrateForkByHeaderId(headerId: String): DBIO[Int] = {
+    getByHeaderId(headerId)
+      .map(assetsFork ++= _)
+      .andThen(deleteByHeaderId(headerId))
   }
 
   /**
    * @param headerId header id
    * @return Asset record(s) associated with the header
    */
-  def getByHeaderId(headerId: String): Future[Seq[AssetTable#TableElementType]] = {
-    db.run(assets.filter(_.headerId === headerId).result)
+  def getByHeaderId(headerId: String): DBIO[Seq[AssetTable#TableElementType]] = {
+    assets.filter(_.headerId === headerId).result
   }
 
   /**
    * @param headerId header id
    * @return Number of rows deleted
    */
-  def deleteByHeaderId(headerId: String): Future[Int] = {
-    db.run(assets.filter(_.headerId === headerId).delete)
+  def deleteByHeaderId(headerId: String): DBIO[Int] = {
+    assets.filter(_.headerId === headerId).delete
   }
-
 }

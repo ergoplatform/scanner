@@ -83,25 +83,25 @@ class TransactionDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
   /**
    * @param headerId header id
    */
-  def migrateForkByHeaderId(headerId: String): Unit = {
-    val transactions = Await.result(getByHeaderId(headerId), 5.second)
-    db.run(this.transactionsFork ++= transactions)
-    deleteByHeaderId(headerId)
+  def migrateForkByHeaderId(headerId: String): DBIO[Int] = {
+    getByHeaderId(headerId)
+      .map(transactionsFork ++= _)
+      .andThen(deleteByHeaderId(headerId))
   }
 
   /**
    * @param headerId header id
    * @return Transaction record(s) associated with the header
    */
-  def getByHeaderId(headerId: String): Future[Seq[TransactionTable#TableElementType]] = {
-    db.run(transactions.filter(_.headerId === headerId).result)
+  def getByHeaderId(headerId: String): DBIO[Seq[TransactionTable#TableElementType]] = {
+    transactions.filter(_.headerId === headerId).result
   }
 
   /**
    * @param headerId header id
    * @return Number of rows deleted
    */
-  def deleteByHeaderId(headerId: String): Future[Int] = {
-    db.run(transactions.filter(_.headerId === headerId).delete)
+  def deleteByHeaderId(headerId: String): DBIO[Int] = {
+    transactions.filter(_.headerId === headerId).delete
   }
 }
