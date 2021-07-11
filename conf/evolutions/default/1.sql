@@ -102,7 +102,7 @@ CREATE TABLE box_registers
 (
     id               VARCHAR(2)    NOT NULL,
     box_id           VARCHAR(64)   NOT NULL,
-    value            VARCHAR(8192) NOT NULL,
+    value            BLOB NOT NULL,
     PRIMARY KEY (id, box_id)
 );
 

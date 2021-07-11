@@ -4,6 +4,7 @@ import org.ergoplatform.modifiers.history.Header
 import org.ergoplatform.{ErgoBox, Input}
 import org.ergoplatform.modifiers.mempool.ErgoTransaction
 import org.ergoplatform.nodeView.wallet.scanning.ScanningPredicate
+import sigmastate.serialization.ValueSerializer
 import scorex.util.ModifierId
 import scorex.util.encode.Base16
 
@@ -31,11 +32,10 @@ object ExtractedTransaction {
   }
 }
 
-case class ExtractedRegisterModel(id: String, boxId: String, value: String)
+case class ExtractedRegisterModel(id: String, boxId: String, value: Array[Byte])
 object ExtractedRegister {
   def apply(register: (org.ergoplatform.ErgoBox.NonMandatoryRegisterId, _ <: sigmastate.Values.EvaluatedValue[_ <: sigmastate.SType]), ergoBox: ErgoBox): ExtractedRegisterModel = {
-    // TODO parse additionalRegisters now registerValue is wrong
-    ExtractedRegisterModel(register._1.toString(), Base16.encode(ergoBox.id), register._2.value.toString)
+    ExtractedRegisterModel(register._1.toString(), Base16.encode(ergoBox.id), ValueSerializer.serialize(register._2))
   }
 }
 case class ExtractedAssetModel(tokenId: String, boxId: String, headerId: String, index: Short, value: Long)
@@ -48,7 +48,6 @@ object ExtractedAsset {
 case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, mainChain: Boolean = true)
 object ExtractedOutput {
   def apply(ergoBox: ErgoBox, header: Header): ExtractedOutputModel = {
-    // TODO: parse ErgoTree
     ExtractedOutputModel(
       Base16.encode(ergoBox.id), ergoBox.transactionId, header.id, ergoBox.value, ergoBox.creationHeight,
       ergoBox.index, Base16.encode(ergoBox.ergoTree.bytes), header.timestamp
