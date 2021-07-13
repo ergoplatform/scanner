@@ -1,10 +1,10 @@
 package org.ergoplatform.scanner
 
-import com.google.common.primitives.UnsignedInts
+import io.circe.Json
 import scalaj.http.{Http, HttpOptions}
 import io.circe.parser._
 import org.bouncycastle.util.BigIntegers
-import org.ergoplatform.ErgoBox.{R4, R5, R6, R7, R8}
+import org.ergoplatform.ErgoBox.{R4, R5, R6, R7, R8, TokenId}
 import org.ergoplatform.{DataInput, ErgoAddressEncoder, ErgoBox, ErgoBoxCandidate, ErgoScriptPredef, P2PKAddress, UnsignedInput}
 import org.ergoplatform.modifiers.history.BlockTransactions
 import org.ergoplatform.modifiers.mempool.{ErgoTransaction, UnsignedErgoTransaction}
@@ -13,22 +13,22 @@ import org.ergoplatform.nodeView.wallet.scanning.{ContainsAssetPredicate, Equals
 import org.ergoplatform.settings.{ErgoSettings, LaunchParameters}
 import org.ergoplatform.wallet.boxes.ErgoBoxSerializer
 import org.ergoplatform.wallet.interpreter.{ErgoProvingInterpreter, TransactionHintsBag}
-import org.ergoplatform.wallet.secrets.{ExtendedSecretKey, PrimitiveSecretKey}
+import org.ergoplatform.wallet.secrets.PrimitiveSecretKey
 import scorex.crypto.hash.Digest32
 import scorex.util.ScorexLogging
 import scorex.util.encode.Base16
-import sigmastate.Values
-import sigmastate.Values.{ByteArrayConstant, IntConstant, LongConstant, SigmaPropConstant, SigmaPropValue}
+import sigmastate.{SByte, Values}
+import sigmastate.Values.{ByteArrayConstant, CollectionConstant, IntConstant, LongConstant, SigmaPropConstant}
 import sigmastate.basics.DLogProtocol.DLogProverInput
 import sigmastate.eval.RuntimeIRContext
 import sigmastate.interpreter.ContextExtension
-import special.sigma.SigmaProp
-import swaydb.Glass
+import sigmastate.serialization.{ErgoTreeSerializer, ValueSerializer}
+import special.collection.Coll
+import sigmastate.eval.Colls
 
 import scala.annotation.tailrec
 import scala.collection.mutable
-import scala.util.Try
-
+import sigmastate.eval._
 
 object BasicDataStructures {
   type ScanId = Int
@@ -72,12 +72,13 @@ object Scanner extends App with ScorexLogging {
 
   def bytesToString(bs: Array[Byte]): String = Base16.encode(bs)
 
-  val controlBoxNftIdString = "43dcfba80c77008cfa31632d989e9193c092fdf9381d55dcc9181cec78cab700"
+  val controlBoxNftIdString = "baeaa079efe3473dd7468e55b20da961c79155da9a848236ec7a5cf0d74cf99a"
   val controlBoxNftId = Base16.decode(controlBoxNftIdString).get
   val controlBoxScanId = 1
   val controlBoxScan = Scan(controlBoxScanId, ContainsAssetPredicate(Digest32 @@ controlBoxNftId))
 
-  val tokenSaleNftId = Base16.decode("28faaad9cc3090ee03686589b08c3965be271c86b650a88f356e57da568862fc").get
+  val tokenSaleNftIdString = "48ab32adaf7eb132c76c077fdeb3df6a6692417168f1541c83a5545c10c63f81"
+  val tokenSaleNftId = Base16.decode(tokenSaleNftIdString).get
   val tokenSaleScanId = 2
   val tokenSaleScan = Scan(tokenSaleScanId, ContainsAssetPredicate(Digest32 @@ tokenSaleNftId))
 
@@ -91,7 +92,7 @@ object Scanner extends App with ScorexLogging {
   val pledgeScan = Scan(pledgeScanId, EqualsScanningPredicate(ErgoBox.R1, Values.ByteArrayConstant(pledgeScriptBytes)))
 
   // We scan for ErgoFund campaign data, stored in outputs with the ErgoFund token
-  val campaignTokenId = Base16.decode("08fc8bd24f0eaa011db3342131cb06eb890066ac6d7e6f7fd61fcdd138bd1e2c").get
+  val campaignTokenId = Base16.decode("07a57a489d187734ad4c960514fdbcb179beae5822774954ac1564085e641dce").get
   val campaignScanId = 4
   val campaignScan = Scan(campaignScanId, ContainsAssetPredicate(Digest32 @@ campaignTokenId))
 
@@ -110,14 +111,25 @@ object Scanner extends App with ScorexLogging {
 
   val serverUrl = "http://213.239.193.208:9053/"
 
-  val bestChainHeaderIds = mutable.Map[Int, Identifier](509323 -> "9744efa8817753229972967dd9feeb6dafd1a625f5ad3fe38fe998ff6f122219")
+  val bestChainHeaderIds = mutable.Map[Int, Identifier](516000 -> "1a9cad7745fb39ba30b6d1a43f524eb43870ddf31bd04f6ac7a3b95f1a23f8a0")
 
   private def getJsonAsString(url: String): String = {
     Http(s"$url")
       .header("Content-Type", "application/json")
       .header("Accept", "application/json")
       .header("Charset", "UTF-8")
-      .option(HttpOptions.readTimeout(10000))
+      .option(HttpOptions.readTimeout(120000))
+      .asString
+      .body
+  }
+
+  private def postJson(url: String, json: Json): String = {
+    Http(s"$url")
+      .header("Content-Type", "application/json")
+      .header("Accept", "application/json")
+      .header("Charset", "UTF-8")
+      .postData(json.toString())
+      .option(HttpOptions.readTimeout(120000))
       .asString
       .body
   }
@@ -172,8 +184,12 @@ object Scanner extends App with ScorexLogging {
           systemBoxes.put(boxId, out.output.bytes)
           log.info("Registered tokensale box: " + boxId)
         case i: Int if i == pledgeScanId =>
+          log.info("Registered pledge box: " + boxId)
 
         case i: Int if i == campaignScanId =>
+          val value = out.output.value
+
+          log.info("Registered campaign box: " + boxId)
 
         case i: Int if i == paymentScanId =>
           log.info("Registered payment box: " + boxId)
@@ -187,27 +203,44 @@ object Scanner extends App with ScorexLogging {
                        campaignDesc: String,
                        campaignScript: SigmaPropConstant,
                        deadline: Int,
-                       minToRaise: Long): Try[Unit] = Try {
+                       minToRaise: Long): Unit = {
     val fee = 10000000 //0.01 ERG
 
+    def deductToken(tokens: Coll[(TokenId, Long)], index: Int): Coll[(TokenId, Long)] = {
+      val atIdx = tokens.apply(index)
+      tokens.updated(index, atIdx._1 -> (atIdx._2 - 1))
+    }
+
     implicit val me = ErgoAddressEncoder.apply(ErgoAddressEncoder.MainnetNetworkPrefix)
-    val keyBytes = Base16.decode("128f6307c0fb8094e733633d2ee4c3bbd06228411aa86cc5566e9d543b41623b").get
+    val keyBytes = Base16.decode("").get
     val key = DLogProverInput(BigIntegers.fromUnsignedByteArray(keyBytes))
 
     val controlBoxId = nftIndex.get(controlBoxNftIdString).get
     val controlBoxBytes = systemBoxes.get(controlBoxId).get
     val controlBox = ErgoBoxSerializer.parseBytes(controlBoxBytes)
 
+    log.info("Control box ID: " + controlBoxId)
+
+    val tokensaleBoxId = nftIndex.get(tokenSaleNftIdString).get
+    val tokensaleBoxBytes = systemBoxes.get(tokensaleBoxId).get
+    val tokensaleBox = ErgoBoxSerializer.parseBytes(tokensaleBoxBytes)
+    val tokansaleOutput = new ErgoBoxCandidate(tokensaleBox.value, tokensaleBox.ergoTree, currentHeight,
+      deductToken(tokensaleBox.additionalTokens, 1), tokensaleBox.additionalRegisters)
+
     val price = controlBox.additionalRegisters(R4).asInstanceOf[LongConstant].value.asInstanceOf[Long]
-    log.info("price: " + price)
+    val devRewardScriptBytes = controlBox.additionalRegisters(R5).asInstanceOf[CollectionConstant[SByte.type]].value.asInstanceOf[Coll[Byte]].toArray
+    val devRewardScript = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(devRewardScriptBytes)
+    val devRewardOutput = new ErgoBoxCandidate(price, devRewardScript, currentHeight)
 
     val inputBoxes = mutable.Buffer[ErgoBox]()
-    var collectedAmount = 0L
+    inputBoxes += tokensaleBox
+    var collectedAmount = tokensaleBox.value
+
     val inputsCount = paymentBoxes.values.takeWhile { boxBytes =>
       val box = ErgoBoxSerializer.parseBytes(boxBytes)
       inputBoxes += box
       collectedAmount += box.value
-      collectedAmount < price + fee
+      collectedAmount < tokensaleBox.value + price + fee
     }.count
 
     log.info("inputs: " + inputsCount)
@@ -231,17 +264,22 @@ object Scanner extends App with ScorexLogging {
     )
 
     val campaignAddress = me.fromString("4MQyMKvMbnCJG3aJ").get.script
-    val campaignPrice = 1000000000L
-    val campaignOutput = new ErgoBoxCandidate(campaignPrice, campaignAddress, currentHeight,
-                                                additionalRegisters = regs)
+    val campaignAmt = 1000000000L
+    val campaignTokens: Array[(TokenId, Long)] = Array((Digest32 @@ campaignTokenId) -> 1)
+    val campaignOutput = new ErgoBoxCandidate(
+      campaignAmt,
+      campaignAddress,
+      currentHeight,
+      additionalTokens = Colls.fromArray(campaignTokens),
+      additionalRegisters = regs)
 
     val feeAmount = 2000000L // 0.002 ERG
     val feeOutput = new ErgoBoxCandidate(feeAmount, ErgoScriptPredef.feeProposition(), currentHeight)
 
-    val changeAmount = collectedAmount - campaignPrice - feeAmount
+    val changeAmount = collectedAmount - campaignAmt - feeAmount - tokensaleBox.value - price
     val changeOutput = new ErgoBoxCandidate(changeAmount, paymentTree, currentHeight)
 
-    val outputs = IndexedSeq[ErgoBoxCandidate](campaignOutput, changeOutput, feeOutput)
+    val outputs = IndexedSeq[ErgoBoxCandidate](tokansaleOutput, devRewardOutput, campaignOutput, changeOutput, feeOutput)
     val unsignedTx = UnsignedErgoTransaction(inputs, dataInputs, outputs)
 
     implicit val ir = new RuntimeIRContext
@@ -249,12 +287,14 @@ object Scanner extends App with ScorexLogging {
 
     val prover = new ErgoProvingInterpreter(IndexedSeq(PrimitiveSecretKey(key)), LaunchParameters)
     val tx = prover.sign(unsignedTx, inputBoxes.toIndexedSeq, IndexedSeq(controlBox),
-      ErgoStateContext.empty(settings), TransactionHintsBag.empty)
-    println("tx: " + tx)
+      ErgoStateContext.empty(settings), TransactionHintsBag.empty).get
+    val json = ErgoTransaction.ergoLikeTransactionEncoder(tx)
+    val txId = postJson(serverUrl + "transactions", json)
+    println("tx id: " + txId)
   }
 
 
-  var lastHeight = 509323 // we start from some recent block
+  var lastHeight = 516000 // we start from some recent block
 
   @tailrec
   def step(): Unit = {
@@ -287,7 +327,7 @@ object Scanner extends App with ScorexLogging {
 
           val deadline = 550000
           val minToRaise = 100000000000L
-          registerCampaign(lastHeight, campaignId, campaignDesc, campaignScript, deadline, minToRaise)
+      //    registerCampaign(lastHeight, campaignId, campaignDesc, campaignScript, deadline, minToRaise)
           Thread.sleep(60 * 1000) // 1 minute
           step()
       }
@@ -298,4 +338,5 @@ object Scanner extends App with ScorexLogging {
 
   //start scanning cycle from lastHeight
   step()
+  
 }
