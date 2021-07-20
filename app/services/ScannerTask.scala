@@ -12,7 +12,10 @@ import models._
 import settings.Rules
 
 
-class ScannerTask @Inject()(extractedBlockDAO: ExtractedBlockDAO, extractionResultDAO: ExtractionResultDAO) {
+class ScannerTask @Inject()(
+                             extractedBlockDAO: ExtractedBlockDAO,
+                             extractionResultDAO: ExtractionResultDAO,
+                             forkedResultDAO: ForkedResultDAO) {
 
   private val logger: Logger = Logger(this.getClass)
 
@@ -37,7 +40,15 @@ class ScannerTask @Inject()(extractedBlockDAO: ExtractedBlockDAO, extractionResu
           logger.info(s"No block found @ height $newHeight")
       }
     } else {
-      // TODO: go back to detect fork depth and process the fork
+      var syncHeight = lastHeight - 1
+      while (extractedBlockDAO.getHeaderIdByHeight(syncHeight) !=
+        NodeProcess.mainChainHeaderIdAtHeight(syncHeight).get) {
+        syncHeight -= 1
+      }
+      for(height <- syncHeight + 1 until lastHeight) {
+        forkedResultDAO.migrateBlockByHeight(height)
+      }
+      step(syncHeight)
     }
   }
 
