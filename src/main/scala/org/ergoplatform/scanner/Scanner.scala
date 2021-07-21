@@ -10,8 +10,8 @@ import org.ergoplatform.modifiers.history.BlockTransactions
 import org.ergoplatform.modifiers.mempool.{ErgoTransaction, UnsignedErgoTransaction}
 import org.ergoplatform.nodeView.state.ErgoStateContext
 import org.ergoplatform.nodeView.wallet.scanning.{ContainsAssetPredicate, EqualsScanningPredicate, ScanningPredicate}
-import org.ergoplatform.scanner.ErgoFundStructures.Campaign
-import org.ergoplatform.settings.{ErgoSettings, LaunchParameters}
+import org.ergoplatform.scanner.ErgoFundStructures.{Campaign, Pledge}
+import org.ergoplatform.settings.{Constants, ErgoSettings, LaunchParameters}
 import org.ergoplatform.wallet.boxes.ErgoBoxSerializer
 import org.ergoplatform.wallet.interpreter.{ErgoProvingInterpreter, TransactionHintsBag}
 import org.ergoplatform.wallet.secrets.PrimitiveSecretKey
@@ -54,9 +54,12 @@ object ErgoFundStructures {
 
   type CampaignId = Int
 
-  case class Campaign(id: Int, desc: String, script: ErgoTree, deadline: Int, toRaise: Long)
+  type PledgeId = String
 
-  case class Pledge()
+  case class Campaign(id: CampaignId, desc: String, script: ErgoTree, deadline: Int, toRaise: Long)
+
+  case class Pledge(pledgeId: PledgeId, campaignId: CampaignId, backerScript: ErgoTree, projectScript: ErgoTree,
+                    deadline: Int, toRaise: Long)
 
   //binary campaign data serializer for SwayDB
   implicit val campaignSerialiser =
@@ -93,6 +96,47 @@ object ErgoFundStructures {
       }
     }
 
+  //binary campaign data serializer for SwayDB
+  implicit val pledgeSerialiser =
+    new Serializer[Pledge] {
+      override def write(pl: Pledge): Slice[Byte] = {
+        val backerScriptBytes = pl.backerScript.bytes
+        val backerScriptBytesLen = backerScriptBytes.length
+
+        val projectScriptBytes = pl.projectScript.bytes
+        val projectScriptBytesLen = projectScriptBytes.length
+
+        Slice
+          .ofBytesScala(200) //allocate enough length to add all fields
+          .addStringUTF8(pl.pledgeId)
+          .addInt(pl.campaignId)
+          .addInt(backerScriptBytesLen)
+          .addAll(backerScriptBytes)
+          .addInt(projectScriptBytesLen)
+          .addAll(projectScriptBytes)
+          .addInt(pl.deadline)
+          .addLong(pl.toRaise)
+          .close() //optionally close to discard unused space
+      }
+
+      override def read(slice: Slice[Byte]): Pledge = {
+        val reader = slice.createReader()
+
+        val pledgeId = reader.readStringUTF8(Constants.ModifierIdSize * 2)
+        val campaignId = reader.readInt()
+        val backerScriptBytesLen = reader.readInt()
+        val backerScriptBytes = reader.read(backerScriptBytesLen).toArray
+        val projectScriptBytesLen = reader.readInt()
+        val projectScriptBytes = reader.read(projectScriptBytesLen).toArray
+        val deadline = reader.readInt()
+        val toRaise = reader.readLong()
+
+        val backerScript = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(backerScriptBytes)
+        val projectScript = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(projectScriptBytes)
+        Pledge(pledgeId, campaignId, backerScript, projectScript, deadline, toRaise)
+      }
+    }
+
 }
 
 object DatabaseStructures {
@@ -115,6 +159,9 @@ object DatabaseStructures {
 
   // Campaigns
   val campaigns = memory.Map[CampaignId, Campaign, Nothing, Glass]()
+
+  // Pledges
+  val pledges = memory.Map[PledgeId, Pledge, Nothing, Glass]()
 }
 
 object Scanner extends App with ScorexLogging {
@@ -122,6 +169,9 @@ object Scanner extends App with ScorexLogging {
   import BasicDataStructures._
   import DatabaseStructures._
   import ErgoTree.fromProposition
+
+  // used in methods producing transactions
+  implicit val me = ErgoAddressEncoder.apply(ErgoAddressEncoder.MainnetNetworkPrefix)
 
   def bytesToString(bs: Array[Byte]): String = Base16.encode(bs)
 
@@ -251,9 +301,9 @@ object Scanner extends App with ScorexLogging {
           val deadline = pledgeBox.get(R7).get.asInstanceOf[IntConstant].value.asInstanceOf[Int]
           val minToRaise = pledgeBox.get(R8).get.asInstanceOf[LongConstant].value.asInstanceOf[Long]
 
-          // todo: pledge structure
-
+          val pledge = Pledge(Base16.encode(pledgeBox.id), campaignId, backerScriptTree, projectScriptTree, deadline, minToRaise)
           log.info("Registered pledge box: " + boxId)
+          pledges.put(pledge.pledgeId, pledge)
 
         case i: Int if i == campaignScanId =>
           val campaignBox = out.output
@@ -268,6 +318,7 @@ object Scanner extends App with ScorexLogging {
 
           val campaign = Campaign(campaignId, campaignDesc, campaignScriptTree, campaignDeadline, campaignToRaise)
           log.info(s"Registered campaign box: $boxId, campaign: $campaign")
+          campaigns.put(campaign.id, campaign)
 
         case i: Int if i == paymentScanId =>
           paymentBoxes.put(boxId, out.output.bytes)
@@ -276,20 +327,22 @@ object Scanner extends App with ScorexLogging {
     }
   }
 
+  def makePledge(): Unit = {
+    //todo: finish
+  }
+
   def registerCampaign(currentHeight: Int,
                        campaignId: Int,
                        campaignDesc: String,
                        campaignScript: SigmaPropConstant,
                        deadline: Int,
                        minToRaise: Long): Unit = {
-    val fee = 10000000 //0.01 ERG
 
     def deductToken(tokens: Coll[(TokenId, Long)], index: Int): Coll[(TokenId, Long)] = {
       val atIdx = tokens.apply(index)
       tokens.updated(index, atIdx._1 -> (atIdx._2 - 1))
     }
 
-    implicit val me = ErgoAddressEncoder.apply(ErgoAddressEncoder.MainnetNetworkPrefix)
     val keyBytes = Base16.decode("").get
     val key = DLogProverInput(BigIntegers.fromUnsignedByteArray(keyBytes))
 
