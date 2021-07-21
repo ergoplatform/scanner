@@ -20,6 +20,15 @@ trait ExtractedBlockComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def mainChain = column[Boolean]("MAIN_CHAIN")
     def * = (id, parentId, height, timestamp, mainChain) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
   }
+
+  class ExtractedBlockForkTable(tag: Tag) extends Table[ExtractedBlockModel](tag, "HEADERS_FORK") {
+    def id = column[String]("ID")
+    def parentId = column[String]("PARENT_ID")
+    def height = column[Int]("HEIGHT")
+    def timestamp = column[Long]("TIMESTAMP")
+    def mainChain = column[Boolean]("MAIN_CHAIN")
+    def * = (id, parentId, height, timestamp, mainChain) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
+  }
 }
 
 @Singleton()
@@ -32,6 +41,7 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
 
 
   val extractedBlocks = TableQuery[ExtractedBlockTable]
+  val extractedBlocksFork = TableQuery[ExtractedBlockForkTable]
 
   /**
    * insert Seq[extractedBlock] into db
@@ -40,7 +50,6 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
   def insert(extractedBlocks: Seq[ExtractedBlockModel]): DBIO[Option[Int]]= {
     this.extractedBlocks ++= extractedBlocks
   }
-
 
   def save(extractedBlocks: Seq[ExtractedBlockModel]): Future[Unit] = {
     db.run(insert(extractedBlocks)).map(_ => ())
@@ -85,5 +94,30 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
   def deleteAll(): Unit = {
     val res = db.run(extractedBlocks.delete)
     Await.result(res, 5.second)
+  }
+
+  /**
+   * @param headerId header id
+   */
+  def migrateForkByHeaderId(headerId: String): DBIO[Int] = {
+      getByHeaderId(headerId)
+        .map(extractedBlocksFork ++= _)
+        .andThen(deleteByHeaderId(headerId))
+  }
+
+  /**
+   * @param headerId header id
+   * @return Header record(s) associated with the id
+   */
+  def getByHeaderId(headerId: String): DBIO[Seq[ExtractedBlockTable#TableElementType]] = {
+    extractedBlocks.filter(_.id === headerId).result
+  }
+
+  /**
+   * @param headerId header id
+   * @return Number of rows deleted
+   */
+  def deleteByHeaderId(headerId: String): DBIO[Int] = {
+    extractedBlocks.filter(_.id === headerId).delete
   }
 }
