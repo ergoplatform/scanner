@@ -10,6 +10,7 @@ import org.ergoplatform.modifiers.history.BlockTransactions
 import org.ergoplatform.modifiers.mempool.{ErgoTransaction, UnsignedErgoTransaction}
 import org.ergoplatform.nodeView.state.ErgoStateContext
 import org.ergoplatform.nodeView.wallet.scanning.{ContainsAssetPredicate, EqualsScanningPredicate, ScanningPredicate}
+import org.ergoplatform.scanner.ErgoFundStructures.Campaign
 import org.ergoplatform.settings.{ErgoSettings, LaunchParameters}
 import org.ergoplatform.wallet.boxes.ErgoBoxSerializer
 import org.ergoplatform.wallet.interpreter.{ErgoProvingInterpreter, TransactionHintsBag}
@@ -18,17 +19,20 @@ import scorex.crypto.hash.Digest32
 import scorex.util.ScorexLogging
 import scorex.util.encode.Base16
 import sigmastate.{SByte, Values}
-import sigmastate.Values.{ByteArrayConstant, CollectionConstant, IntConstant, LongConstant, SigmaPropConstant}
+import sigmastate.Values.{ByteArrayConstant, CollectionConstant, ErgoTree, IntConstant, LongConstant, SigmaPropConstant}
 import sigmastate.basics.DLogProtocol.DLogProverInput
 import sigmastate.eval.RuntimeIRContext
 import sigmastate.interpreter.ContextExtension
-import sigmastate.serialization.{ErgoTreeSerializer, ValueSerializer}
+import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
 import sigmastate.eval.Colls
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import sigmastate.eval._
+import special.sigma.SigmaProp
+import swaydb.data.slice.Slice
+import swaydb.serializers.Serializer
 
 object BasicDataStructures {
   type ScanId = Int
@@ -46,13 +50,59 @@ object BasicDataStructures {
 
 }
 
+object ErgoFundStructures {
+
+  type CampaignId = Int
+
+  case class Campaign(id: Int, desc: String, script: ErgoTree, deadline: Int, toRaise: Long)
+
+  case class Pledge()
+
+  //binary campaign data serializer for SwayDB
+  implicit val campaignSerialiser =
+    new Serializer[Campaign] {
+      override def write(cmp: Campaign): Slice[Byte] = {
+        val descLen = cmp.desc.length
+        val scriptBytes = cmp.script.bytes
+        val scriptBytesLen = scriptBytes.length
+
+        Slice
+          .ofBytesScala(200) //allocate enough length to add all fields
+          .addInt(cmp.id)
+          .addInt(descLen)
+          .addStringUTF8(cmp.desc)
+          .addInt(scriptBytesLen)
+          .addAll(scriptBytes)
+          .addInt(cmp.deadline)
+          .addLong(cmp.toRaise)
+          .close() //optionally close to discard unused space
+      }
+
+      override def read(slice: Slice[Byte]): Campaign = {
+        val reader = slice.createReader()
+        val id = reader.readInt()
+        val descLen = reader.readInt()
+        val desc = reader.readStringUTF8(descLen)
+        val scriptBytesLen = reader.readInt()
+        val scriptBytes = reader.read(scriptBytesLen).toArray
+        val deadline = reader.readInt()
+        val toRaise = reader.readLong()
+
+        val script = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(scriptBytes)
+        Campaign(id, desc, script, deadline, toRaise)
+      }
+    }
+
+}
+
 object DatabaseStructures {
 
   import swaydb._
   import swaydb.serializers.Default._
   import scala.concurrent.duration._
+  import org.ergoplatform.scanner.ErgoFundStructures._
 
-  //Create an in-memory map instance
+  // Create an in-memory map instance
   val pledgeBoxes = memory.Map[String, Array[Byte], Nothing, Glass]()
 
   val campaignBoxes = memory.Map[String, Array[Byte], Nothing, Glass]()
@@ -63,12 +113,15 @@ object DatabaseStructures {
 
   val nftIndex = memory.Map[String, String, Nothing, Glass]()
 
+  // Campaigns
+  val campaigns = memory.Map[CampaignId, Campaign, Nothing, Glass]()
 }
 
 object Scanner extends App with ScorexLogging {
 
   import BasicDataStructures._
   import DatabaseStructures._
+  import ErgoTree.fromProposition
 
   def bytesToString(bs: Array[Byte]): String = Base16.encode(bs)
 
@@ -179,21 +232,46 @@ object Scanner extends App with ScorexLogging {
           nftIndex.put(bytesToString(controlBoxNftId), boxId)
           systemBoxes.put(boxId, out.output.bytes)
           log.info("Registered control box: " + boxId)
+
         case i: Int if i == tokenSaleScanId =>
           nftIndex.put(bytesToString(tokenSaleNftId), boxId)
           systemBoxes.put(boxId, out.output.bytes)
           log.info("Registered tokensale box: " + boxId)
+
         case i: Int if i == pledgeScanId =>
+          val pledgeBox = out.output
+          val value = pledgeBox.value
+          val campaignId = pledgeBox.get(R4).get.asInstanceOf[IntConstant].value.asInstanceOf[Int]
+
+          val backerScriptProp = pledgeBox.get(R5).get.asInstanceOf[SigmaPropConstant].value.asInstanceOf[SigmaProp]
+          val projectScriptProp = pledgeBox.get(R6).get.asInstanceOf[SigmaPropConstant].value.asInstanceOf[SigmaProp]
+          val backerScriptTree = ErgoTree.fromProposition(backerScriptProp)
+          val projectScriptTree = ErgoTree.fromProposition(projectScriptProp)
+
+          val deadline = pledgeBox.get(R7).get.asInstanceOf[IntConstant].value.asInstanceOf[Int]
+          val minToRaise = pledgeBox.get(R8).get.asInstanceOf[LongConstant].value.asInstanceOf[Long]
+
+          // todo: pledge structure
+
           log.info("Registered pledge box: " + boxId)
 
         case i: Int if i == campaignScanId =>
-          val value = out.output.value
+          val campaignBox = out.output
+          val value = campaignBox.value // todo: check the valur is above threshold
+          val campaignId = campaignBox.get(R4).get.asInstanceOf[IntConstant].value.asInstanceOf[Int]
+          val campaignDescBytes = campaignBox.get(R5).get.asInstanceOf[CollectionConstant[SByte.type]].value.asInstanceOf[Array[Byte]]
+          val campaignDesc = new String(campaignDescBytes, "UTF-8")
+          val campaignScriptProp = campaignBox.get(R6).get.asInstanceOf[SigmaPropConstant].value.asInstanceOf[SigmaProp]
+          val campaignScriptTree = ErgoTree.fromProposition(campaignScriptProp)
+          val campaignDeadline = campaignBox.get(R7).get.asInstanceOf[IntConstant].value.asInstanceOf[Int]
+          val campaignToRaise = campaignBox.get(R8).get.asInstanceOf[LongConstant].value.asInstanceOf[Long]
 
-          log.info("Registered campaign box: " + boxId)
+          val campaign = Campaign(campaignId, campaignDesc, campaignScriptTree, campaignDeadline, campaignToRaise)
+          log.info(s"Registered campaign box: $boxId, campaign: $campaign")
 
         case i: Int if i == paymentScanId =>
-          log.info("Registered payment box: " + boxId)
           paymentBoxes.put(boxId, out.output.bytes)
+          log.info("Registered payment box: " + boxId)
       }
     }
   }
