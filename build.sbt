@@ -24,3 +24,12 @@ libraryDependencies += "org.ergoplatform" %% "ergo" % "v4.0.13-5251a78b-SNAPSHOT
 
 // swaydb just for an experiment
 libraryDependencies += "io.swaydb" %% "swaydb" % "0.16.2"
+
+// akka http for API 
+val AkkaVersion = "2.6.10"
+val AkkaHttpVersion = "10.2.4"
+libraryDependencies ++= Seq(
+  "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion
+)
