@@ -15,20 +15,18 @@ trait InputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def boxId = column[String]("BOX_ID")
     def txId = column[String]("TX_ID")
     def headerId = column[String]("HEADER_ID")
-    def proofBytes = column[String]("PROOF_BYTES")
+    def proofBytes = column[Array[Byte]]("PROOF_BYTES")
     def index = column[Short]("INDEX")
-    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
-    def * = (boxId, txId, headerId, proofBytes, index, mainChain) <> (ExtractedInputModel.tupled, ExtractedInputModel.unapply)
+    def * = (boxId, txId, headerId, proofBytes, index) <> (ExtractedInputModel.tupled, ExtractedInputModel.unapply)
   }
 
   class InputForkTable(tag: Tag) extends Table[ExtractedInputModel](tag, "INPUTS_FORK") {
     def boxId = column[String]("BOX_ID")
     def txId = column[String]("TX_ID")
     def headerId = column[String]("HEADER_ID")
-    def proofBytes = column[String]("PROOF_BYTES")
+    def proofBytes = column[Array[Byte]]("PROOF_BYTES")
     def index = column[Short]("INDEX")
-    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
-    def * = (boxId, txId, headerId, proofBytes, index, mainChain) <> (ExtractedInputModel.tupled, ExtractedInputModel.unapply)
+    def * = (boxId, txId, headerId, proofBytes, index) <> (ExtractedInputModel.tupled, ExtractedInputModel.unapply)
   }
 }
 

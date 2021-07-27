@@ -1,46 +1,84 @@
 package dao
 
 import javax.inject.Inject
-import models.{ExtractedAssetModel, ExtractedBlockModel, ExtractedInputModel, ExtractedOutputModel, ExtractedRegisterModel, ExtractedTransactionModel, ExtractionResultModel}
+import models.{ExtractedAssetModel, ExtractedBlockModel, ExtractedDataInputModel, ExtractedInputModel, ExtractedOutputModel, ExtractedRegisterModel, ExtractedTransactionModel, ExtractionInputResultModel, ExtractionOutputResultModel, ExtractionResultModel}
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext}
 
 
-class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, transactionDAO: TransactionDAO, inputDAO: InputDAO, outputDAO: OutputDAO, assetDAO: AssetDAO, registerDAO: RegisterDAO, protected val dbConfigProvider: DatabaseConfigProvider) (implicit executionContext: ExecutionContext)
+class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, transactionDAO: TransactionDAO, dataInputDAO: DataInputDAO, inputDAO: InputDAO, outputDAO: OutputDAO, assetDAO: AssetDAO, registerDAO: RegisterDAO, protected val dbConfigProvider: DatabaseConfigProvider) (implicit executionContext: ExecutionContext)
     extends DbUtils with HasDatabaseConfigProvider[JdbcProfile] {
+
+  import profile.api._
+  /**
+  * store data into db as transactionally.
+   * @param spentTrackedInputs : ExtractionInputResultModel extracted spent Tracked Inputs
+   */
+  def storeBaseOnInputs(spentTrackedInputs: Seq[ExtractionInputResultModel]): Unit = {
+    var transactions: Seq[ExtractedTransactionModel] = Seq()
+    var dataInputs: Seq[ExtractedDataInputModel] = Seq()
+    var inputs: Seq[ExtractedInputModel] = Seq()
+
+    spentTrackedInputs.foreach(obj => {
+      inputs = inputs :+ obj.extractedInput
+      dataInputs = dataInputs ++ obj.extractedDataInput
+      transactions = transactions :+ obj.extractedTransaction
+    })
+
+    val inputsIds = inputs.map(_.boxId)
+    val updateAndGetQuery = for {
+      outputs <- DBIO.successful(outputDAO.outputs.filter(_.boxId inSet inputsIds))
+      _ <- outputs.map(_.spent).update(true)
+      result <- outputs.map(_.boxId).result
+    } yield result
+    val responseUpdateAndGetQuery = Await.result(execTransact(updateAndGetQuery), Duration.Inf)
+    inputs = inputs.filter( input => responseUpdateAndGetQuery.contains(input.boxId))
+    transactions = transactions.filter(n => inputs.exists(n.id == _.txId))
+    dataInputs = dataInputs.filter(n => inputs.exists(n.txId == _.txId))
+
+
+    val action = for {
+      _ <- transactionDAO.insertIfDoesNotExist(transactions.distinct)
+      _ <- dataInputDAO.insertIfDoesNotExist(dataInputs.distinct)
+      _ <- inputDAO.insert(inputs)
+    } yield {
+
+    }
+    val response = execTransact(action)
+    Await.result(response, Duration.Inf)
+  }
 
   /**
   * store data into db as transactionally.
-   * @param extractionResult : ExtractionResultModel extracted data
+   * @param createdOutputs : ExtractionOutputResultModel extracted outputs
    * @param extractedBlockModel: ExtractedBlockModel extracted block
    */
-  def save(extractionResult: ExtractionResultModel, extractedBlockModel: ExtractedBlockModel): Unit = {
+  def storeBaseOnOutputs(createdOutputs: Seq[ExtractionOutputResultModel], extractedBlockModel: ExtractedBlockModel): Unit = {
     var transactions: Seq[ExtractedTransactionModel] = Seq()
+    var dataInputs: Seq[ExtractedDataInputModel] = Seq()
     var outputs: Seq[ExtractedOutputModel] = Seq()
-    var inputs: Seq[ExtractedInputModel] = Seq()
     var assets: Seq[ExtractedAssetModel] = Seq()
     var registers: Seq[ExtractedRegisterModel] = Seq()
-    extractionResult.createdOutputs.foreach(obj => {
+
+    createdOutputs.foreach(obj => {
       outputs = outputs :+ obj.extractedOutput
       transactions = transactions :+ obj.extractedTransaction
+      dataInputs = dataInputs ++ obj.extractedDataInput
       assets = assets ++ obj.extractedAssets
       registers = registers ++ obj.extractedRegisters
     })
-    extractionResult.spentTrackedInputs.foreach(obj => {
-      inputs = inputs :+ obj.extractedInput
-      transactions = transactions :+ obj.extractedTransaction
-    })
+
     val action = for {
         _ <- extractedBlockDAO.insert(Seq(extractedBlockModel))
-        _ <- transactionDAO.insert(transactions.distinct)
+        _ <- transactionDAO.insertIfDoesNotExist(transactions.distinct)
+        _ <- dataInputDAO.insertIfDoesNotExist(dataInputs.distinct)
         _ <- outputDAO.insert(outputs)
         _ <- assetDAO.insert(assets)
         _ <- registerDAO.insert(registers)
-        _ <- inputDAO.insert(inputs)
     } yield {
 
     }

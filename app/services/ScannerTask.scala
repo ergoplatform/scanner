@@ -29,19 +29,17 @@ class ScannerTask @Inject()(
         case Some(header) =>
           logger.info(s"Processing block at height: $newHeight, id: ${header.id}")
           val extractionResult = NodeProcess.processTransactions(header.id, Rules.exampleRules)
-          extractionResultDAO.save(extractionResult, ExtractedBlock(header))
+          extractionResultDAO.storeBaseOnOutputs(extractionResult.createdOutputs, ExtractedBlock(header))
+          extractionResultDAO.storeBaseOnInputs(extractionResult.spentTrackedInputs)
           val extractedCount = extractionResult.createdOutputs.length
           logger.info("Extracted: " + extractedCount + " outputs")
-          if (extractedCount > 0) {
-            logger.info("New Ergofund outputs found: " + extractionResult.createdOutputs)
-          }
           step(newHeight)
         case None =>
           logger.info(s"No block found @ height $newHeight")
       }
     } else {
       var syncHeight = lastHeight - 1
-      while (extractedBlockDAO.getHeaderIdByHeight(syncHeight) !=
+      while (extractedBlockDAO.getHeaderIdByHeight(lastHeight) !=
         NodeProcess.mainChainHeaderIdAtHeight(syncHeight).get) {
         syncHeight -= 1
       }

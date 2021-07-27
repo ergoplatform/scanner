@@ -1,7 +1,7 @@
 package models
 
 import org.ergoplatform.modifiers.history.Header
-import org.ergoplatform.{ErgoBox, Input}
+import org.ergoplatform.{DataInput, ErgoBox, Input}
 import org.ergoplatform.modifiers.mempool.ErgoTransaction
 import org.ergoplatform.nodeView.wallet.scanning.ScanningPredicate
 import sigmastate.serialization.ValueSerializer
@@ -16,7 +16,7 @@ object Types {
 
 case class Scan(id: Types.ScanId, scanningPredicate: ScanningPredicate)
 
-case class ExtractedBlockModel(headerId: String, parentId: String, height: Int, timestamp: Long, mainChain: Boolean = true)
+case class ExtractedBlockModel(headerId: String, parentId: String, height: Int, timestamp: Long)
 object ExtractedBlock {
   def apply(header: Header): ExtractedBlockModel = {
     ExtractedBlockModel(header.id, header.parentId, header.height, header.timestamp)
@@ -25,7 +25,7 @@ object ExtractedBlock {
 
 case class ExtractionRulesModel(scans: Seq[Scan])
 
-case class ExtractedTransactionModel(id: String, headerId: String, inclusionHeight: Int, timestamp: Long, mainChain: Boolean = true)
+case class ExtractedTransactionModel(id: String, headerId: String, inclusionHeight: Int, timestamp: Long)
 object ExtractedTransaction {
   def apply(tx: ErgoTransaction, header: Header): ExtractedTransactionModel = {
     ExtractedTransactionModel(tx.id, header.id, header.height, header.timestamp)
@@ -38,6 +38,7 @@ object ExtractedRegister {
     ExtractedRegisterModel(register._1.toString(), Base16.encode(ergoBox.id), ValueSerializer.serialize(register._2))
   }
 }
+
 case class ExtractedAssetModel(tokenId: String, boxId: String, headerId: String, index: Short, value: Long)
 object ExtractedAsset {
     def apply(token: (ModifierId, Long), ergoBox: ErgoBox, headerId: String, index: Short): ExtractedAssetModel = {
@@ -45,7 +46,7 @@ object ExtractedAsset {
   }
 }
 
-case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, mainChain: Boolean = true)
+case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, spent: Boolean = false)
 object ExtractedOutput {
   def apply(ergoBox: ErgoBox, header: Header): ExtractedOutputModel = {
     ExtractedOutputModel(
@@ -55,15 +56,21 @@ object ExtractedOutput {
   }
 }
 
-case class ExtractedInputModel(boxId: String, txId: String, headerId: String, proofBytes: String, index: Short, mainChain: Boolean = true)
+case class ExtractedInputModel(boxId: String, txId: String, headerId: String, proofBytes: Array[Byte], index: Short)
 object ExtractedInput {
   def apply(inputBox: Input, index: Short, txId: String, header: Header): ExtractedInputModel = {
-     ExtractedInputModel(inputBox.boxId.toString, txId, header.id.toString, inputBox.spendingProof.proof.toString, index)
+     ExtractedInputModel(Base16.encode(inputBox.boxId), txId, header.id.toString, inputBox.spendingProof.proof, index)
   }
 }
 
+case class ExtractedDataInputModel(boxId: String, txId: String, headerId: String, index: Short)
+object ExtractedDataInput {
+  def apply(dataInput: DataInput, index: Short, txId: String, header: Header): ExtractedDataInputModel = {
+     ExtractedDataInputModel(Base16.encode(dataInput.boxId), txId, header.id.toString, index)
+  }
+}
 
-case class ExtractionOutputResultModel(extractedOutput: ExtractedOutputModel, extractedRegisters: Seq[ExtractedRegisterModel], extractedAssets: Seq[ExtractedAssetModel], extractedTransaction: ExtractedTransactionModel)
+case class ExtractionOutputResultModel(extractedOutput: ExtractedOutputModel, extractedRegisters: Seq[ExtractedRegisterModel], extractedAssets: Seq[ExtractedAssetModel], extractedTransaction: ExtractedTransactionModel, extractedDataInput: Seq[ExtractedDataInputModel])
 object ExtractionOutputResult {
   def apply(ergoBox: ErgoBox, header: Header, tx: ErgoTransaction): ExtractionOutputResultModel = {
     val extractedOutput = ExtractedOutput(ergoBox, header)
@@ -75,9 +82,24 @@ object ExtractionOutputResult {
         ExtractedAsset(token, ergoBox, header.id.toString, index.toShort)
     }
     val extractedTransaction = ExtractedTransaction(tx, header)
-    ExtractionOutputResultModel(extractedOutput, extractedRegisters.toSeq, extractedAssets.toSeq, extractedTransaction)
+    val extractedDataInputs = tx.dataInputs.zipWithIndex.map {
+      case (dataInput, index) => ExtractedDataInput(dataInput, index.toShort, tx.id, header)
+    }
+    ExtractionOutputResultModel(extractedOutput, extractedRegisters.toSeq, extractedAssets.toSeq, extractedTransaction, extractedDataInputs.toSeq)
   }
 }
-case class ExtractionInputResultModel(extractedInput: ExtractedInputModel, extractedTransaction: ExtractedTransactionModel)
+
+case class ExtractionInputResultModel(extractedInput: ExtractedInputModel, extractedTransaction: ExtractedTransactionModel, extractedDataInput: Seq[ExtractedDataInputModel])
+object ExtractionInputResult {
+  def apply(input: Input, index: Short, header: Header, tx: ErgoTransaction): ExtractionInputResultModel = {
+    val extractedInput = ExtractedInput(input, index, tx.id, header)
+    val extractedTransaction = ExtractedTransaction(tx, header)
+    val extractedDataInputs = tx.dataInputs.zipWithIndex.map {
+      case (dataInput, index) => ExtractedDataInput(dataInput, index.toShort, tx.id, header)
+    }
+    ExtractionInputResultModel(extractedInput, extractedTransaction, extractedDataInputs)
+  }
+}
+
 
 case class ExtractionResultModel(spentTrackedInputs: Seq[ExtractionInputResultModel], createdOutputs: Seq[ExtractionOutputResultModel])
