@@ -23,7 +23,7 @@ import sigmastate.Values.{ByteArrayConstant, CollectionConstant, ErgoTree, IntCo
 import sigmastate.basics.DLogProtocol.DLogProverInput
 import sigmastate.eval.RuntimeIRContext
 import sigmastate.interpreter.ContextExtension
-import sigmastate.serialization.ErgoTreeSerializer
+import sigmastate.serialization.{ErgoTreeSerializer, ValueSerializer}
 import special.collection.Coll
 import sigmastate.eval.Colls
 
@@ -219,14 +219,14 @@ object Scanner extends App with ScorexLogging {
 
   val serverUrl = "http://213.239.193.208:9053/"
 
-  val bestChainHeaderIds = mutable.Map[Int, Identifier](516000 -> "1a9cad7745fb39ba30b6d1a43f524eb43870ddf31bd04f6ac7a3b95f1a23f8a0")
+  val bestChainHeaderIds = mutable.Map[Int, Identifier](538469 -> "c8596d39793da6d35241183dc45b074a68339660f835dd76708684fe0268f1e2")
 
   private def getJsonAsString(url: String): String = {
     Http(s"$url")
       .header("Content-Type", "application/json")
       .header("Accept", "application/json")
       .header("Charset", "UTF-8")
-      .option(HttpOptions.readTimeout(120000))
+      .option(HttpOptions.readTimeout(180000))
       .asString
       .body
   }
@@ -237,7 +237,7 @@ object Scanner extends App with ScorexLogging {
       .header("Accept", "application/json")
       .header("Charset", "UTF-8")
       .postData(json.toString())
-      .option(HttpOptions.readTimeout(120000))
+      .option(HttpOptions.readTimeout(180000))
       .asString
       .body
   }
@@ -470,7 +470,7 @@ object Scanner extends App with ScorexLogging {
   }
 
 
-  var lastHeight = 516000 // we start from some recent block
+  var lastHeight = bestChainHeaderIds.last._1 // we start from some recent block
 
   @tailrec
   def step(): Unit = {
@@ -518,6 +518,12 @@ object Scanner extends App with ScorexLogging {
 }
 
 
+
+
+
+
+
+
 object Tests extends App {
   //todo: move to proper tests
 
@@ -535,4 +541,6 @@ object Tests extends App {
 
   println(campaign.script.toProposition(true).asInstanceOf[SigmaPropConstant])
 
+
+  println(Base16.encode(ValueSerializer.serialize(LongConstant(1000000))))
 }
