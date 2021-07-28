@@ -63,7 +63,7 @@ object ErgoFundStructures {
   case class Pledge(pledgeId: PledgeId, campaignId: CampaignId, backerScript: ErgoTree, projectScript: ErgoTree,
                     deadline: Int, toRaise: Long)
 
-  //binary campaign data serializer for SwayDB
+  //binary serializers for SwayDB below
   implicit val campaignSerialiser =
     new Serializer[Campaign] {
       override def write(cmp: Campaign): Slice[Byte] = {
@@ -98,7 +98,6 @@ object ErgoFundStructures {
       }
     }
 
-  //binary campaign data serializer for SwayDB
   implicit val pledgeSerialiser =
     new Serializer[Pledge] {
       override def write(pl: Pledge): Slice[Byte] = {
@@ -147,9 +146,10 @@ object DatabaseStructures {
   import swaydb.serializers.Default._
   import org.ergoplatform.scanner.ErgoFundStructures._
 
-  // Create an in-memory map instance
+  // for boxes corresponding to pledges
   val pledgeBoxes = persistent.Map[String, Array[Byte], Nothing, Glass](dir = "/tmp/data/pledgeBoxes")
 
+  // for boxes corresponding to campaigns
   val campaignBoxes = persistent.Map[String, Array[Byte], Nothing, Glass](dir = "/tmp/data/campaignBoxes")
 
   val paymentBoxes = persistent.Map[String, Array[Byte], Nothing, Glass](dir = "/tmp/data/paymentBoxes")
@@ -381,7 +381,6 @@ object Scanner extends App with ScorexLogging {
   }*/
 
   def registerCampaign(currentHeight: Int,
-                       campaignId: Int,
                        campaignDesc: String,
                        campaignScript: SigmaPropConstant,
                        deadline: Int,
@@ -406,6 +405,7 @@ object Scanner extends App with ScorexLogging {
     val tokensaleBox = ErgoBoxSerializer.parseBytes(tokensaleBoxBytes)
     val tokensaleOutput = new ErgoBoxCandidate(tokensaleBox.value, tokensaleBox.ergoTree, currentHeight,
       deductToken(tokensaleBox.additionalTokens, 1), tokensaleBox.additionalRegisters)
+    val campaignId = tokensaleBox.additionalRegisters(R4).asInstanceOf[IntConstant].value.asInstanceOf[Int]
 
     val price = controlBox.additionalRegisters(R4).asInstanceOf[LongConstant].value.asInstanceOf[Long]
     val devRewardScriptBytes = controlBox.additionalRegisters(R5).asInstanceOf[CollectionConstant[SByte.type]].value.asInstanceOf[Coll[Byte]].toArray
@@ -451,7 +451,7 @@ object Scanner extends App with ScorexLogging {
       campaignAddress,
       currentHeight,
       additionalTokens = Colls.fromArray(campaignTokens),
-      additionalRegisters = regs)
+      additionalRegisters = Map(R4 -> IntConstant(campaignId + 1)))
 
     val feeOutput = new ErgoBoxCandidate(txFee, ErgoScriptPredef.feeProposition(), currentHeight)
 
@@ -503,7 +503,7 @@ object Scanner extends App with ScorexLogging {
 
           val deadline = 550000
           val minToRaise = 100000000000L
-      //    registerCampaign(lastHeight, campaignId, campaignDesc, campaignScript, deadline, minToRaise)
+      //    registerCampaign(lastHeight, campaignDesc, campaignScript, deadline, minToRaise)
           Thread.sleep(60 * 1000) // 1 minute
           step()
       }
