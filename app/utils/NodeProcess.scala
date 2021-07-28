@@ -62,17 +62,17 @@ object NodeProcess {
     val ergoFullBlock = mainChainFullBlockWithHeaderId(headerId).get
 
     val createdOutputs = mutable.Buffer[ExtractionOutputResultModel]()
-    val createdInputs = mutable.Buffer[ExtractionInputResultModel]()
+    val extractedInputs = mutable.Buffer[ExtractionInputResultModel]()
     ergoFullBlock.transactions.foreach { tx =>
       tx.inputs.zipWithIndex.map {
       case (input, index) =>
-          createdInputs += ExtractionInputResult(input, index.toShort, ergoFullBlock.header, tx)
+          extractedInputs += ExtractionInputResult(input, index.toShort, ergoFullBlock.header, tx)
       }
       tx.outputs.foreach { out =>
         val condition = extractionRules.scans.map(_.scanningPredicate.filter(out)).reduce(_ || _)
         if (condition) createdOutputs += ExtractionOutputResult(out, ergoFullBlock.header, tx)
       }
     }
-    ExtractionResultModel(createdInputs, createdOutputs)
+    ExtractionResultModel(extractedInputs, createdOutputs)
   }
 }

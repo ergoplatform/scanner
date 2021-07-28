@@ -102,4 +102,4 @@ object ExtractionInputResult {
 }
 
 
-case class ExtractionResultModel(spentTrackedInputs: Seq[ExtractionInputResultModel], createdOutputs: Seq[ExtractionOutputResultModel])
+case class ExtractionResultModel(extractedInputs: Seq[ExtractionInputResultModel], createdOutputs: Seq[ExtractionOutputResultModel])

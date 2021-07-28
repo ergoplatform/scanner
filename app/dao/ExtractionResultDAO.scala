@@ -1,7 +1,7 @@
 package dao
 
 import javax.inject.Inject
-import models.{ExtractedAssetModel, ExtractedBlockModel, ExtractedDataInputModel, ExtractedInputModel, ExtractedOutputModel, ExtractedRegisterModel, ExtractedTransactionModel, ExtractionInputResultModel, ExtractionOutputResultModel, ExtractionResultModel}
+import models.{ExtractedAssetModel, ExtractedBlockModel, ExtractedDataInputModel, ExtractedInputModel, ExtractedOutputModel, ExtractedRegisterModel, ExtractedTransactionModel, ExtractionInputResultModel, ExtractionOutputResultModel}
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
@@ -15,15 +15,15 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
 
   import profile.api._
   /**
-  * store data into db as transactionally.
-   * @param spentTrackedInputs : ExtractionInputResultModel extracted spent Tracked Inputs
+  * Spend outputs, that have appeared here as inputs and store these inputs and transactions into db as transactionally.
+   * @param extractedInputs : ExtractionInputResultModel extracted Inputs in one block
    */
-  def storeBaseOnInputs(spentTrackedInputs: Seq[ExtractionInputResultModel]): Unit = {
+  def spendOutputsAndStoreRelatedData(extractedInputs: Seq[ExtractionInputResultModel]): Unit = {
     var transactions: Seq[ExtractedTransactionModel] = Seq()
     var dataInputs: Seq[ExtractedDataInputModel] = Seq()
     var inputs: Seq[ExtractedInputModel] = Seq()
 
-    spentTrackedInputs.foreach(obj => {
+    extractedInputs.foreach(obj => {
       inputs = inputs :+ obj.extractedInput
       dataInputs = dataInputs ++ obj.extractedDataInput
       transactions = transactions :+ obj.extractedTransaction
@@ -53,11 +53,11 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
   }
 
   /**
-  * store data into db as transactionally.
+  * Store extracted Block also store outputs, transactions are scanned according to rules into db as transactionally.
    * @param createdOutputs : ExtractionOutputResultModel extracted outputs
    * @param extractedBlockModel: ExtractedBlockModel extracted block
    */
-  def storeBaseOnOutputs(createdOutputs: Seq[ExtractionOutputResultModel], extractedBlockModel: ExtractedBlockModel): Unit = {
+  def storeOutputsAndRelatedData(createdOutputs: Seq[ExtractionOutputResultModel], extractedBlockModel: ExtractedBlockModel): Unit = {
     var transactions: Seq[ExtractedTransactionModel] = Seq()
     var dataInputs: Seq[ExtractedDataInputModel] = Seq()
     var outputs: Seq[ExtractedOutputModel] = Seq()
