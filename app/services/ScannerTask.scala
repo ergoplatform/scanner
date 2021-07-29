@@ -29,7 +29,7 @@ class ScannerTask @Inject()(
         case Some(header) =>
           logger.info(s"Processing block at height: $newHeight, id: ${header.id}")
           val extractionResult = NodeProcess.processTransactions(header.id, Rules.exampleRules)
-          extractionResultDAO.storeBaseOnOutputs(extractionResult.createdOutputs, ExtractedBlock(header))
+          extractionResultDAO.storeOutputsAndRelatedData(extractionResult.createdOutputs, ExtractedBlock(header))
           extractionResultDAO.spendOutputsAndStoreRelatedData(extractionResult.extractedInputs)
           val extractedCount = extractionResult.createdOutputs.length
           logger.info("Extracted: " + extractedCount + " outputs")

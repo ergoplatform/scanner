@@ -37,20 +37,20 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
       result <- outputs.map(_.boxId).result
     } yield result
 
-    val bfInputsTxIds = BloomFilter.create[String](Funnels.byteArrayFunnel(), 20000, 0.01)
+    val bfInputsTxIds = BloomFilter.create[Array[Byte]](Funnels.byteArrayFunnel(), 20000, 0.01)
 
     val action = for {
       responseUpdateAndGetQuery <- updateAndGetQuery.transactionally
       filteredInputs <- DBIO.successful(inputs.filter( input => {
         if (responseUpdateAndGetQuery.contains(input.boxId)){
-          bfInputsTxIds.put(input.txId)
+          bfInputsTxIds.put(input.txId.getBytes)
           true
         }
         else false
       }))
-      transactions <- DBIO.successful(transactions.filter(n => bfInputsTxIds.mightContain(n.id)))
+      transactions <- DBIO.successful(transactions.filter(n => bfInputsTxIds.mightContain(n.id.getBytes)))
       _ <- transactionDAO.insertIfDoesNotExist(transactions.distinct)
-      dataInputs <- DBIO.successful(dataInputs.filter(n => bfInputsTxIds.mightContain(n.txId)))
+      dataInputs <- DBIO.successful(dataInputs.filter(n => bfInputsTxIds.mightContain(n.txId.getBytes)))
       _ <- dataInputDAO.insertIfDoesNotExist(dataInputs.distinct)
       _ <- inputDAO.insert(filteredInputs)
     } yield {
