@@ -5,6 +5,7 @@ import models.{ExtractedAssetModel, ExtractedBlockModel, ExtractedDataInputModel
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
+import com.google.common.hash.{BloomFilter, Funnels}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext}
@@ -35,16 +36,23 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
       _ <- outputs.map(_.spent).update(true)
       result <- outputs.map(_.boxId).result
     } yield result
-    val responseUpdateAndGetQuery = Await.result(execTransact(updateAndGetQuery), Duration.Inf)
-    inputs = inputs.filter( input => responseUpdateAndGetQuery.contains(input.boxId))
-    transactions = transactions.filter(n => inputs.exists(n.id == _.txId))
-    dataInputs = dataInputs.filter(n => inputs.exists(n.txId == _.txId))
 
+    val bfInputsTxIds = BloomFilter.create[String](Funnels.byteArrayFunnel(), 20000, 0.01)
 
     val action = for {
+      responseUpdateAndGetQuery <- updateAndGetQuery.transactionally
+      filteredInputs <- DBIO.successful(inputs.filter( input => {
+        if (responseUpdateAndGetQuery.contains(input.boxId)){
+          bfInputsTxIds.put(input.txId)
+          true
+        }
+        else false
+      }))
+      transactions <- DBIO.successful(transactions.filter(n => bfInputsTxIds.mightContain(n.id)))
       _ <- transactionDAO.insertIfDoesNotExist(transactions.distinct)
+      dataInputs <- DBIO.successful(dataInputs.filter(n => bfInputsTxIds.mightContain(n.txId)))
       _ <- dataInputDAO.insertIfDoesNotExist(dataInputs.distinct)
-      _ <- inputDAO.insert(inputs)
+      _ <- inputDAO.insert(filteredInputs)
     } yield {
 
     }
