@@ -152,10 +152,14 @@ object DatabaseStructures {
   // for boxes corresponding to campaigns
   val campaignBoxes = persistent.Map[String, Array[Byte], Nothing, Glass](dir = "/tmp/data/campaignBoxes")
 
+  // boxes used by offchain service to pay for campaign registration. In the real deployed ErgoFund likely
+  // a user should pay via a proxy service or DApp connector
   val paymentBoxes = persistent.Map[String, Array[Byte], Nothing, Glass](dir = "/tmp/data/paymentBoxes")
 
+  // control box and tokensale box stored there
   val systemBoxes = persistent.Map[String, Array[Byte], Nothing, Glass](dir = "/tmp/data/systemBoxes")
 
+  // actual NftId -> BoxId correspondences
   val nftIndex = persistent.Map[String, String, Nothing, Glass](dir = "/tmp/data/nftIndex")
 
   // Campaigns
@@ -200,11 +204,13 @@ object Scanner extends App with ScorexLogging {
   val pledgeScan = Scan(pledgeScanId, EqualsScanningPredicate(ErgoBox.R1, Values.ByteArrayConstant(pledgeScriptBytes)))
 
   // We scan for ErgoFund campaign data, stored in outputs with the ErgoFund token
+  // The scan will find tokensale boxes also, we filter them out later
   val campaignTokenId = Base16.decode("07a57a489d187734ad4c960514fdbcb179beae5822774954ac1564085e641dce").get
   val campaignScanId = 4
   val campaignScan = Scan(campaignScanId, ContainsAssetPredicate(Digest32 @@ campaignTokenId))
 
-  //
+  // Script of boxes used to pay for registering campaigns. In deployed ErgoFund should be replaced with a user paying
+  // via proxy service or DApp connector.
   val paymentTree = ErgoAddressEncoder(ErgoAddressEncoder.MainnetNetworkPrefix)
     .fromString("9f2UU1Jo52WDMCCCu9GYdiWSmb5V7jzP8FdRkVqqvCHyD72gTTR")
     .get
@@ -279,6 +285,7 @@ object Scanner extends App with ScorexLogging {
     ExtractionResult(Seq.empty, createdOutputs)
   }
 
+  // ErgoFund-specific logic to process scans-related data extracted from the blockchain
   def ergoFundProcess(extractionResult: BasicDataStructures.ExtractionResult): Unit = {
     extractionResult.createdOutputs.foreach { out =>
       val boxId = bytesToString(out.output.id)

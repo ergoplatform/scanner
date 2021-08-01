@@ -15,12 +15,19 @@ object HttpServerRoutingMinimal {
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext = system.executionContext
 
-    val route =
-      path("campaigns") {
-        get {
-          complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, DatabaseStructures.campaigns.count.toString))
-        }
+    val campaignsRoute = path("campaigns") {
+      get {
+        complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, DatabaseStructures.campaigns.count.toString))
       }
+    }
+
+    val pledgesRoute = path("pledges") {
+      get {
+        complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, DatabaseStructures.pledges.count.toString))
+      }
+    }
+
+    val route = campaignsRoute ~ pledgesRoute
 
     val bindingFuture = Http().newServerAt("localhost", 7777).bind(route)
 
