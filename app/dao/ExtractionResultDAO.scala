@@ -23,35 +23,40 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
     var transactions: Seq[ExtractedTransactionModel] = Seq()
     var dataInputs: Seq[ExtractedDataInputModel] = Seq()
     var inputs: Seq[ExtractedInputModel] = Seq()
+    var inputsIds: Seq[String] = Seq()
 
     extractedInputs.foreach(obj => {
       inputs = inputs :+ obj.extractedInput
+      inputsIds = inputsIds :+ obj.extractedInput.boxId
       dataInputs = dataInputs ++ obj.extractedDataInput
       transactions = transactions :+ obj.extractedTransaction
     })
 
-    val inputsIds = inputs.map(_.boxId)
     val updateAndGetQuery = for {
       outputs <- DBIO.successful(outputDAO.outputs.filter(_.boxId inSet inputsIds))
       _ <- outputs.map(_.spent).update(true)
       result <- outputs.map(_.boxId).result
     } yield result
 
-    val bfInputsTxIds = BloomFilter.create[Array[Byte]](Funnels.byteArrayFunnel(), 20000, 0.01)
+    var inputsTxIds: Seq[String] = Seq()
 
     val action = for {
       responseUpdateAndGetQuery <- updateAndGetQuery.transactionally
-      filteredInputs <- DBIO.successful(inputs.filter( input => {
-        if (responseUpdateAndGetQuery.contains(input.boxId)){
-          bfInputsTxIds.put(input.txId.getBytes)
-          true
-        }
-        else false
-      }))
-      transactions <- DBIO.successful(transactions.filter(n => bfInputsTxIds.mightContain(n.id.getBytes)))
-      _ <- transactionDAO.insertIfDoesNotExist(transactions.distinct)
-      dataInputs <- DBIO.successful(dataInputs.filter(n => bfInputsTxIds.mightContain(n.txId.getBytes)))
-      _ <- dataInputDAO.insertIfDoesNotExist(dataInputs.distinct)
+      filteredInputs <- DBIO.successful({
+        val needInputs = inputs.filter( input => {
+          if (responseUpdateAndGetQuery.contains(input.boxId)) {
+            inputsTxIds = inputsTxIds :+ input.txId
+            true
+          }
+          else false
+        })
+        inputsTxIds = inputsTxIds.distinct
+        needInputs
+      })
+      transactions <- DBIO.successful(transactions.distinct.filter(n => inputsTxIds.contains(n.id)))
+      _ <- transactionDAO.insertIfDoesNotExist(transactions)
+      dataInputs <- DBIO.successful(dataInputs.distinct.filter(n => inputsTxIds.contains(n.txId)))
+      _ <- dataInputDAO.insertIfDoesNotExist(dataInputs)
       _ <- inputDAO.insert(filteredInputs)
     } yield {
 
