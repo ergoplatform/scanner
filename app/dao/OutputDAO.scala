@@ -6,9 +6,9 @@ import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
 
-
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.util.Try
 
 trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
   import profile.api._
@@ -22,8 +22,8 @@ trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def index = column[Short]("INDEX")
     def ergoTree = column[String]("ERGO_TREE")
     def timestamp = column[Long]("TIMESTAMP")
-    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
-    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, mainChain) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def spent = column[Boolean]("SPENT", O.Default(false))
+    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
   }
 
   class OutputForkTable(tag: Tag) extends Table[ExtractedOutputModel](tag, "OUTPUTS_FORK") {
@@ -35,14 +35,14 @@ trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def index = column[Short]("INDEX")
     def ergoTree = column[String]("ERGO_TREE")
     def timestamp = column[Long]("TIMESTAMP")
-    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
-    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, mainChain) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def spent = column[Boolean]("SPENT", O.Default(false))
+    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
   }
 }
 
 @Singleton()
 class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider)(implicit executionContext: ExecutionContext)
-  extends OutputComponent
+  extends DbUtils with OutputComponent
     with HasDatabaseConfigProvider[JdbcProfile] {
 
   import profile.api._
@@ -112,8 +112,7 @@ class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvide
    * @param headerId header id
    * @return Box id(s) associated with the header
    */
-  def getBoxIdsByHeaderId(headerId: String): Seq[String] = {
-    val res = db.run(outputs.filter(_.headerId === headerId).map(_.boxId).result)
-    Await.result(res, 5.second)
+  def getBoxIdsByHeaderIdQuery(headerId: String): DBIO[Seq[String]] = {
+    outputs.filter(_.headerId === headerId).map(_.boxId).result
   }
 }

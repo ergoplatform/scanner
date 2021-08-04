@@ -3,7 +3,8 @@ package utils
 import play.api.db.slick.HasDatabaseConfigProvider
 import slick.jdbc.JdbcProfile
 
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 import scala.util.Try
 
 trait DbUtils { self: HasDatabaseConfigProvider[JdbcProfile] =>
@@ -17,6 +18,11 @@ trait DbUtils { self: HasDatabaseConfigProvider[JdbcProfile] =>
    */
   def execTransact[T](dbio: DBIO[T]): Future[T] =
     db.run(dbio.transactionally)
+
+  def execAwait[T](dbio: DBIO[T]): T = {
+    val query = db.run(dbio)
+    Await.result(query, Duration.Inf)
+  }
 
   /**
   * exception handling for get any object from db

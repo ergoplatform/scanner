@@ -8,6 +8,7 @@ import utils.DbUtils
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.util.Try
 
 trait ExtractedBlockComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
   import profile.api._
@@ -17,8 +18,7 @@ trait ExtractedBlockComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def parentId = column[String]("PARENT_ID")
     def height = column[Int]("HEIGHT")
     def timestamp = column[Long]("TIMESTAMP")
-    def mainChain = column[Boolean]("MAIN_CHAIN")
-    def * = (id, parentId, height, timestamp, mainChain) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
+    def * = (id, parentId, height, timestamp) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
   }
 
   class ExtractedBlockForkTable(tag: Tag) extends Table[ExtractedBlockModel](tag, "HEADERS_FORK") {
@@ -26,8 +26,7 @@ trait ExtractedBlockComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def parentId = column[String]("PARENT_ID")
     def height = column[Int]("HEIGHT")
     def timestamp = column[Long]("TIMESTAMP")
-    def mainChain = column[Boolean]("MAIN_CHAIN")
-    def * = (id, parentId, height, timestamp, mainChain) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
+    def * = (id, parentId, height, timestamp) <> (ExtractedBlockModel.tupled, ExtractedBlockModel.unapply)
   }
 }
 
@@ -69,14 +68,20 @@ class ExtractedBlockDAO @Inject() (protected val dbConfigProvider: DatabaseConfi
     Await.result(res, 5.second)
   }
 
+    /**
+   * @param height block Height
+   * @return DBIO Action Header Id associated with the height
+   */
+  def getHeaderIdByHeightQuery(height: Int): DBIO[Try[Option[String]]] = {
+    extractedBlocks.filter(_.height === height).map(_.id).result.headOption.asTry
+  }
+
   /**
    * @param height block Height
    * @return Header Id associated with the height
    */
   def getHeaderIdByHeight(height: Int): String = {
-    val res = db.run(extractedBlocks.filter(_.height === height).map(_.id).result.headOption.asTry)
-    val out = Await.result(res, 5.second)
-    notFoundHandle(out)
+    notFoundHandle(execAwait(getHeaderIdByHeightQuery(height)))
   }
 
   /**

@@ -14,14 +14,14 @@ trait RegisterComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
   class RegisterTable(tag: Tag) extends Table[ExtractedRegisterModel](tag, "BOX_REGISTERS") {
     def id = column[String]("ID")
     def boxId = column[String]("BOX_ID")
-    def value = column[String]("VALUE")
+    def value = column[Array[Byte]]("VALUE")
     def * = (id, boxId, value) <> (ExtractedRegisterModel.tupled, ExtractedRegisterModel.unapply)
   }
 
   class RegisterForkTable(tag: Tag) extends Table[ExtractedRegisterModel](tag, "BOX_REGISTERS_FORK") {
     def id = column[String]("ID")
     def boxId = column[String]("BOX_ID")
-    def value = column[String]("VALUE")
+    def value = column[Array[Byte]]("VALUE")
     def * = (id, boxId, value) <> (ExtractedRegisterModel.tupled, ExtractedRegisterModel.unapply)
   }
 }

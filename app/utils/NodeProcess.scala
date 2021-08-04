@@ -62,21 +62,17 @@ object NodeProcess {
     val ergoFullBlock = mainChainFullBlockWithHeaderId(headerId).get
 
     val createdOutputs = mutable.Buffer[ExtractionOutputResultModel]()
+    val extractedInputs = mutable.Buffer[ExtractionInputResultModel]()
     ergoFullBlock.transactions.foreach { tx =>
-      tx.inputs.foreach { input =>
-        // TODO: check if a tracked output is spent by the input, please note an output from the same block
-        //  could be spent
+      tx.inputs.zipWithIndex.map {
+      case (input, index) =>
+          extractedInputs += ExtractionInputResult(input, index.toShort, ergoFullBlock.header, tx)
       }
       tx.outputs.foreach { out =>
-        extractionRules.scans.foreach { scan =>
-          if (scan.scanningPredicate.filter(out)) {
-            createdOutputs += ExtractionOutputResult(out, ergoFullBlock.header, tx)
-          }
-        }
+        val condition = extractionRules.scans.map(_.scanningPredicate.filter(out)).reduce(_ || _)
+        if (condition) createdOutputs += ExtractionOutputResult(out, ergoFullBlock.header, tx)
       }
     }
-
-    // TODO: spent inputs instead of Seq.empty
-    ExtractionResultModel(Seq.empty, createdOutputs)
+    ExtractionResultModel(extractedInputs, createdOutputs)
   }
 }

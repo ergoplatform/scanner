@@ -18,8 +18,7 @@ trait TransactionComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def headerId = column[String]("HEADER_ID")
     def inclusionHeight = column[Int]("INCLUSION_HEIGHT")
     def timestamp = column[Long]("TIMESTAMP")
-    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
-    def * = (id, headerId, inclusionHeight, timestamp, mainChain) <> (ExtractedTransactionModel.tupled, ExtractedTransactionModel.unapply)
+    def * = (id, headerId, inclusionHeight, timestamp) <> (ExtractedTransactionModel.tupled, ExtractedTransactionModel.unapply)
   }
 
   class TransactionForkTable(tag: Tag) extends Table[ExtractedTransactionModel](tag, "TRANSACTIONS_FORK") {
@@ -27,8 +26,7 @@ trait TransactionComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def headerId = column[String]("HEADER_ID")
     def inclusionHeight = column[Int]("INCLUSION_HEIGHT")
     def timestamp = column[Long]("TIMESTAMP")
-    def mainChain = column[Boolean]("MAIN_CHAIN", O.Default(true))
-    def * = (id, headerId, inclusionHeight, timestamp, mainChain) <> (ExtractedTransactionModel.tupled, ExtractedTransactionModel.unapply)
+    def * = (id, headerId, inclusionHeight, timestamp) <> (ExtractedTransactionModel.tupled, ExtractedTransactionModel.unapply)
   }
 }
 
@@ -54,6 +52,15 @@ class TransactionDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    * @param transactions transaction
    */
   def insert(transactions: Seq[ExtractedTransactionModel]): DBIO[Option[Int]] = this.transactions ++= transactions
+
+  def insertIfDoesNotExist(transactions: Seq[ExtractedTransactionModel]): DBIO[Option[Int]] = {
+       val ids = transactions.map(_.id)
+       (for {
+         existing <- this.transactions.filter(_.id inSet ids).result
+         filtered = transactions.filterNot(tx => existing.contains(tx))
+         count <- insert(filtered)
+       } yield count).transactionally
+  }
 
   /**
    * exec insert query
