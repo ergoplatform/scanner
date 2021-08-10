@@ -18,7 +18,7 @@ import org.ergoplatform.wallet.secrets.PrimitiveSecretKey
 import scorex.crypto.hash.Digest32
 import scorex.util.ScorexLogging
 import scorex.util.encode.Base16
-import sigmastate.{SByte, Values}
+import sigmastate.{SByte, SSigmaProp, Values}
 import sigmastate.Values.{ByteArrayConstant, CollectionConstant, ConstantNode, ErgoTree, IntConstant, LongConstant, SigmaPropConstant}
 import sigmastate.basics.DLogProtocol.DLogProverInput
 import sigmastate.eval.RuntimeIRContext
@@ -415,7 +415,7 @@ object Scanner extends App with ScorexLogging {
     val campaignId = tokensaleBox.additionalRegisters(R4).asInstanceOf[IntConstant].value.asInstanceOf[Int]
 
     val price = controlBox.additionalRegisters(R4).asInstanceOf[LongConstant].value.asInstanceOf[Long]
-    val devRewardScript = controlBox.additionalRegisters(R5).asInstanceOf[CSigmaProp].sigmaTree
+    val devRewardScript = controlBox.additionalRegisters(R5).asInstanceOf[ConstantNode[SSigmaProp.type]].value.asInstanceOf[CSigmaProp].sigmaTree
     val devRewardOutput = new ErgoBoxCandidate(price, devRewardScript, currentHeight)
 
     val inputBoxes = mutable.Buffer[ErgoBox]()
