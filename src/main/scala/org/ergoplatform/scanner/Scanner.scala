@@ -184,12 +184,12 @@ object Scanner extends App with ScorexLogging {
 
   def bytesToString(bs: Array[Byte]): String = Base16.encode(bs)
 
-  val controlBoxNftIdString = "c88bd2971e56e0c73d48d7fdc466efe068a4b64cdf19b5ee9f38f1cd850de33e"
+  val controlBoxNftIdString = "72c3fbce3243d491d81eb564cdab1662b1f8d4c7e312b88870cec79b7cfd4321"
   val controlBoxNftId = Base16.decode(controlBoxNftIdString).get
   val controlBoxScanId = 1
   val controlBoxScan = Scan(controlBoxScanId, ContainsAssetPredicate(Digest32 @@ controlBoxNftId))
 
-  val tokenSaleNftIdString = "1e24b4ec7c244962737d3f58ec83a444aa0fd45f2505b409ea4b3c9ba8427b12"
+  val tokenSaleNftIdString = "15b0ae41c24230069ff96dacbac0932850ac0c2a0924daf72a39e88cbcf3acd5"
   val tokenSaleNftId = Base16.decode(tokenSaleNftIdString).get
   val tokenSaleScanId = 2
   val tokenSaleScan = Scan(tokenSaleScanId, ContainsAssetPredicate(Digest32 @@ tokenSaleNftId))
@@ -205,7 +205,7 @@ object Scanner extends App with ScorexLogging {
 
   // We scan for ErgoFund campaign data, stored in outputs with the ErgoFund token
   // The scan will find tokensale boxes also, we filter them out later
-  val campaignTokenId = Base16.decode("7b6a228b323ede2361c02d7adf66224c79b6a2d2075e63834b98886e4004802f").get
+  val campaignTokenId = Base16.decode("05b66b97e5802f6447b67fe30cb4055e14d6b17bb14f5f563d65c9622c43a659").get
   val campaignScanId = 4
   val campaignScan = Scan(campaignScanId, ContainsAssetPredicate(Digest32 @@ campaignTokenId))
 
@@ -225,7 +225,7 @@ object Scanner extends App with ScorexLogging {
 
   val serverUrl = "http://213.239.193.208:9053/"
 
-  val bestChainHeaderIds = mutable.Map[Int, Identifier](551820 -> "bab7de083fa4bc7152d88bab373187a39839a941ac84437201707581bf0e05c5")
+  val bestChainHeaderIds = mutable.Map[Int, Identifier](553033 -> "447779fe8f73fd3b5c90ae063099342480ae03d963662675a2ce4f79081ecd6e")
 
   private def getJsonAsString(url: String): String = {
     Http(s"$url")
@@ -302,7 +302,6 @@ object Scanner extends App with ScorexLogging {
 
         case i: Int if i == pledgeScanId =>
           val pledgeBox = out.output
-          val value = pledgeBox.value
           val campaignId = pledgeBox.get(R4).get.asInstanceOf[IntConstant].value.asInstanceOf[Int]
 
           val backerScriptProp = pledgeBox.get(R5).get.asInstanceOf[SigmaPropConstant].value.asInstanceOf[SigmaProp]
@@ -346,46 +345,6 @@ object Scanner extends App with ScorexLogging {
     }
   }
 
-  /*
-  def makePledge(amount: Long,
-                 campaign: Campaign,
-                 backerScript: SigmaPropConstant,
-                 currentHeight: Int): Unit = {
-
-    val inputKey = ???
-    // todo: finish
-
-    // see EIP-0018
-    val pledgeScriptAddress = "XUFypmadXVvYmBWtiuwDioN1rtj6nSvqgzgWjx1yFmHAVndPaAEgnUvEvEDSkpgZPRmCYeqxewi8ZKZ4Pamp1M9DAdu8d4PgShGRDV9inwzN6TtDeefyQbFXRmKCSJSyzySrGAt16"
-
-    val regs = Map(
-      R4 -> IntConstant(campaign.id),
-      R5 -> backerScript,
-      R6 -> campaign.script.toProposition(true).asInstanceOf[SigmaPropConstant],
-      R7 -> IntConstant(campaign.deadline),
-      R8 -> LongConstant(campaign.toRaise)
-    )
-
-    val pledgeOutput = new ErgoBoxCandidate(
-      amount,
-      me.fromString(pledgeScriptAddress).get.script,
-      currentHeight,
-      additionalTokens = Colls.emptyColl,
-      additionalRegisters = regs)
-
-    val outputs = IndexedSeq[ErgoBoxCandidate](pledgeOutput, changeOutput, feeOutput)
-
-    val inputs = inputBoxes.map(b => new UnsignedInput(b.id, ContextExtension.empty)).toIndexedSeq
-    val dataInputs = IndexedSeq.empty
-    val unsignedTx = UnsignedErgoTransaction(inputs, dataInputs, outputs)
-
-    val prover = new ErgoProvingInterpreter(IndexedSeq(PrimitiveSecretKey(inputKey)), LaunchParameters)
-    val tx = prover.sign(unsignedTx, inputBoxes.toIndexedSeq, IndexedSeq(controlBox),
-      ErgoStateContext.empty(settings), TransactionHintsBag.empty).get
-    val json = ErgoTransaction.ergoLikeTransactionEncoder(tx)
-    val txId = postJson(serverUrl + "transactions", json)
-    println("tx id: " + txId)
-  }*/
 
   def registerCampaign(currentHeight: Int,
                        campaignDesc: String,
@@ -405,14 +364,17 @@ object Scanner extends App with ScorexLogging {
     val controlBoxBytes = systemBoxes.get(controlBoxId).get
     val controlBox = ErgoBoxSerializer.parseBytes(controlBoxBytes)
 
+    println("Control box: " + controlBox)
     log.info("Control box ID: " + controlBoxId)
 
     val tokensaleBoxId = nftIndex.get(tokenSaleNftIdString).get
     val tokensaleBoxBytes = systemBoxes.get(tokensaleBoxId).get
     val tokensaleBox = ErgoBoxSerializer.parseBytes(tokensaleBoxBytes)
-    val tokensaleOutput = new ErgoBoxCandidate(tokensaleBox.value, tokensaleBox.ergoTree, currentHeight,
-      deductToken(tokensaleBox.additionalTokens, 1), tokensaleBox.additionalRegisters)
     val campaignId = tokensaleBox.additionalRegisters(R4).asInstanceOf[IntConstant].value.asInstanceOf[Int]
+
+    val updTokensaleRegs = tokensaleBox.additionalRegisters.updated(R4, IntConstant(campaignId + 1))
+    val tokensaleOutput = new ErgoBoxCandidate(tokensaleBox.value, tokensaleBox.ergoTree, currentHeight,
+      deductToken(tokensaleBox.additionalTokens, 1), updTokensaleRegs)
 
     val price = controlBox.additionalRegisters(R4).asInstanceOf[LongConstant].value.asInstanceOf[Long]
     val devRewardScript = controlBox.additionalRegisters(R5).asInstanceOf[ConstantNode[SSigmaProp.type]].value.asInstanceOf[CSigmaProp].sigmaTree
@@ -457,7 +419,7 @@ object Scanner extends App with ScorexLogging {
       campaignAddress,
       currentHeight,
       additionalTokens = Colls.fromArray(campaignTokens),
-      additionalRegisters = Map(R4 -> IntConstant(campaignId + 1)))
+      additionalRegisters = regs)
 
     val feeOutput = new ErgoBoxCandidate(txFee, ErgoScriptPredef.feeProposition(), currentHeight)
 
@@ -499,7 +461,6 @@ object Scanner extends App with ScorexLogging {
           step()
         case None =>
           log.info(s"No block found @ height $newHeight")
-          val campaignId = 0
           val campaignDesc = "Test campaign"
           val campaignScript = SigmaPropConstant(
             ErgoAddressEncoder(ErgoAddressEncoder.MainnetNetworkPrefix)
@@ -509,7 +470,7 @@ object Scanner extends App with ScorexLogging {
 
           val deadline = 555000
           val minToRaise = 100000000000L
-          registerCampaign(lastHeight, campaignDesc, campaignScript, deadline, minToRaise)
+        //  registerCampaign(lastHeight, campaignDesc, campaignScript, deadline, minToRaise)
           Thread.sleep(60 * 1000) // 1 minute
           step()
       }
@@ -548,5 +509,7 @@ object Tests extends App {
   println(campaign.script.toProposition(true).asInstanceOf[SigmaPropConstant])
 
 
-  println(Base16.encode(ValueSerializer.serialize(LongConstant(1000000))))
+  println(Base16.encode(ValueSerializer.serialize(LongConstant(100000000))))
+
+  println(Base16.encode(ValueSerializer.serialize(IntConstant(555000))))
 }
