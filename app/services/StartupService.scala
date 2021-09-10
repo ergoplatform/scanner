@@ -4,6 +4,7 @@ import akka.actor.{ActorRef, ActorSystem, Props}
 import javax.inject._
 import play.api.Logger
 import play.api.inject.ApplicationLifecycle
+import settings.Configuration
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -35,7 +36,7 @@ class StartupService @Inject()(appLifecycle: ApplicationLifecycle,
 
   appLifecycle.addStopHook { () =>
     logger.info("Scanner stopped")
-
+    Configuration.stopScanning()
     system.stop(jobs)
     Future.successful(())
   }

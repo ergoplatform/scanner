@@ -3,12 +3,14 @@ package utils
 import io.circe.Decoder
 import io.circe.parser.parse
 import models._
+import org.ergoplatform.ErgoBox
 import org.ergoplatform.modifiers.ErgoFullBlock
 import org.ergoplatform.modifiers.history.Header
 import scalaj.http.{Http, HttpOptions}
 import settings.Configuration
 
 import scala.collection.mutable
+import scala.util.{Failure, Success}
 
 object NodeProcess {
 
@@ -22,6 +24,15 @@ object NodeProcess {
       .option(HttpOptions.readTimeout(10000))
       .asString
       .body
+  }
+
+  def lastHeight: Int = {
+    val infoUrl = serverUrl + s"info"
+    parse(getJsonAsString(infoUrl)).toTry match {
+      case Success(infoJs) =>
+        infoJs.hcursor.downField("fullHeight").as[Int].getOrElse(throw new Exception("can't parse fullHeight"))
+      case Failure(exception) => throw exception
+    }
   }
 
   def mainChainHeaderIdAtHeight(height: Int): Option[String] = {
@@ -41,9 +52,11 @@ object NodeProcess {
     val blockHeader = parseResultBlockHeader.as[Header].toOption
     blockHeader
   }
+
   def mainChainHeaderAtHeight(height: Int): Option[Header] = {
-    val mainChainId = mainChainHeaderIdAtHeight(height).get
-    mainChainHeaderWithHeaderId(mainChainId)
+    val mainChainId = mainChainHeaderIdAtHeight(height)
+    if (mainChainId.nonEmpty) mainChainHeaderWithHeaderId(mainChainId.get)
+    else None
   }
 
   def mainChainFullBlockWithHeaderId(headerId: String): Option[ErgoFullBlock] = {
@@ -56,8 +69,23 @@ object NodeProcess {
     ergoFullBlock
   }
 
-  def processTransactions(headerId: String,
-                          extractionRules: ExtractionRulesModel): ExtractionResultModel = {
+  /**
+   *
+   * @param box ErgoBox
+   * @param rules scanRules
+   * @return Int, If the box matches, the first scan ID will be returned, otherwise 0
+   */
+  def checkBox(box: ErgoBox, rules: Seq[ScanModel]): Int = {
+    rules.foreach(scanRule => {
+      if (scanRule.trackingRule.filter(box)) return scanRule.scanId
+    })
+    0
+  }
+
+  def processTransactions(
+                           headerId: String,
+                           extractionRules: ExtractionRulesModel
+                         ): ExtractionResultModel = {
 
     val ergoFullBlock = mainChainFullBlockWithHeaderId(headerId).get
 
@@ -65,12 +93,23 @@ object NodeProcess {
     val extractedInputs = mutable.Buffer[ExtractionInputResultModel]()
     ergoFullBlock.transactions.foreach { tx =>
       tx.inputs.zipWithIndex.map {
-      case (input, index) =>
-          extractedInputs += ExtractionInputResult(input, index.toShort, ergoFullBlock.header, tx)
+        case (input, index) =>
+          extractedInputs += ExtractionInputResult(
+            input,
+            index.toShort,
+            ergoFullBlock.header,
+            tx
+          )
       }
       tx.outputs.foreach { out =>
-        val condition = extractionRules.scans.map(_.scanningPredicate.filter(out)).reduce(_ || _)
-        if (condition) createdOutputs += ExtractionOutputResult(out, ergoFullBlock.header, tx)
+        val scanId = checkBox(out, extractionRules.scans)
+        if (scanId > 0)
+          createdOutputs += ExtractionOutputResult(
+            out,
+            ergoFullBlock.header,
+            tx,
+            scanId
+          )
       }
     }
     ExtractionResultModel(extractedInputs, createdOutputs)

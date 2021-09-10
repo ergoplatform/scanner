@@ -1,4 +1,13 @@
 GET         /                               controllers.Controller.home
+GET         /info                           controllers.Controller.scanInfo
+
+POST        /scan/register                  controllers.Controller.scanRegister
+POST        /scan/deregister                controllers.Controller.scanDeregister
+GET         /scan/listAll                   controllers.Controller.listAllScans
+GET         /scan/unspentBoxes/:scanId      controllers.Controller.listUBoxes(scanId: Int, minConfirmations: Int ?= 0, minInclusionHeight: Int ?= 0)
+GET         /scan/start                     controllers.Controller.scanStart
+GET         /scan/stop                     controllers.Controller.scanStop
+
 
 GET         /assets/*file                   controllers.Assets.versioned(path="/public", file: Asset)
 
