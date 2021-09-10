@@ -13,13 +13,9 @@ transactions block-by-block, with forks handling, database storage, configurable
 database schema and blockchain scanning rules.
 
 
-**Current prototype does not processing forks yet, neither supporting database persistence,
-and just extracting outputs for ErgoFund-related data** 
-
 ## TODO: 
 
-* database persistence
-* forks processing (remove data from blocks rolled back or move to dedicated tables)
-* made scanning rules configurable (via config?), with customized persistence (via plugin?)
-* API
-* ErgoFund example   
+* Swagger or other api documentations
+* DockerFile
+* Add api-key for some routes
+* Update readme   
