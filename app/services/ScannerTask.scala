@@ -9,7 +9,6 @@ import utils.NodeProcess
 
 import scala.annotation.tailrec
 import models._
-import settings.Configuration
 
 
 class ScannerTask @Inject()( extractedBlockDAO: ExtractedBlockDAO, extractionResultDAO: ExtractionResultDAO,
@@ -19,10 +18,6 @@ class ScannerTask @Inject()( extractedBlockDAO: ExtractedBlockDAO, extractionRes
 
   @tailrec
   private def step(lastHeight: Int): Unit = {
-    if (!Configuration.isActiveScanning) {
-      logger.warn("Scanner task stopped, please start scanning process.")
-      return
-    }
     val localId = extractedBlockDAO.getHeaderIdByHeight(lastHeight)
     if (localId == NodeProcess.mainChainHeaderIdAtHeight(lastHeight).get) {
       // no fork

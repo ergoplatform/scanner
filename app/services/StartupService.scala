@@ -36,7 +36,6 @@ class StartupService @Inject()(appLifecycle: ApplicationLifecycle,
 
   appLifecycle.addStopHook { () =>
     logger.info("Scanner stopped")
-    Configuration.stopScanning()
     system.stop(jobs)
     Future.successful(())
   }

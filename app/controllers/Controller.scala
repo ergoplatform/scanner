@@ -12,7 +12,6 @@ import org.ergoplatform.ErgoBox
 import play.api.Logger
 import play.api.libs.json.JsValue
 import play.api.mvc._
-import settings.Configuration
 import utils.ErrorHandler._
 import utils.NodeProcess.lastHeight
 
@@ -64,11 +63,7 @@ class Controller @Inject()(extractedBlockDAO: ExtractedBlockDAO, scanDAO: ScanDA
         case Success(scanIdJs) =>
           val id = scanIdJs.hcursor.downField("scanId").as[Int].getOrElse(throw new Exception("scanId is required"))
           val numberDeleted = scanDAO.deleteById(id)
-          if (numberDeleted > 0)
-            {
-              if (scanDAO.count() == 0 )  Configuration.stopScanning()
-              result = Json.fromFields(List(("scanId", Json.fromInt(id))))
-            }
+          if (numberDeleted > 0) result = Json.fromFields(List(("scanId", Json.fromInt(id))))
           else throw NotFoundException("scanId not found")
         case Failure(e) => throw new Exception(e)
       }
@@ -108,63 +103,18 @@ class Controller @Inject()(extractedBlockDAO: ExtractedBlockDAO, scanDAO: ScanDA
   }
 
   /**
-   * start scanning. Route: /scan/start
-   *
-   * @return  {
-   *          "state": "start"
-   *          }
-   * If count of scanning rules be less than zero:
-   *  @return {
-   *          "status": false,
-   *          "detail": "No scanning rules are defined"
-   *          }
-   */
-  def scanStart: Action[AnyContent] = Action { implicit request =>
-    try {
-      if (scanDAO.count() > 0 ) {
-        Configuration.startScanning()
-        Ok(Json.fromFields(List(("state", Json.fromString("start")))).toString()).as("application/json")
-      }
-      else throw NotFoundException("No scanning rules are defined")
-    }
-    catch {
-      case m: NotFoundException => notFoundResponse(m.getMessage)
-      case e: Exception => errorResponse(e)
-    }
-  }
-
-  /**
-   * stop scanning. Route: /scan/stop
-   *
-   * @return {
-   *            "state": "stop"
-   *         }
-   */
-  def scanStop: Action[AnyContent] = Action { implicit request =>
-    try {
-      Configuration.stopScanning()
-      Ok(Json.fromFields(List(("state", Json.fromString("stop")))).toString()).as("application/json")
-    }
-    catch {
-      case e: Exception => errorResponse(e)
-    }
-  }
-
-  /**
    * status of scanner. Route: /info
    *
    * @return {
-   *            "isActiveScanning": false,
    *            "lastScannedHeight": 563885,
    *            "networkHeight": 573719
    *         }
    */
   def scanInfo: Action[AnyContent] = Action { implicit request =>
     try {
-      val isActiveScanning = ("isActiveScanning", Json.fromBoolean(Configuration.isActiveScanning))
       val lastScannedHeight = ("lastScannedHeight", Json.fromInt(extractedBlockDAO.getLastHeight))
       val networkHeight = ("networkHeight", Json.fromInt(lastHeight))
-      Ok(Json.fromFields(List(isActiveScanning, lastScannedHeight, networkHeight)).toString()).as("application/json")
+      Ok(Json.fromFields(List(lastScannedHeight, networkHeight)).toString()).as("application/json")
     }
     catch {
       case e: Exception => errorResponse(e)
