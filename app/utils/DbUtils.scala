@@ -2,6 +2,7 @@ package utils
 
 import play.api.db.slick.HasDatabaseConfigProvider
 import slick.jdbc.JdbcProfile
+import utils.ErrorHandler.NotFoundException
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
@@ -33,7 +34,7 @@ trait DbUtils { self: HasDatabaseConfigProvider[JdbcProfile] =>
   def notFoundHandle[T](inp: Try[Option[T]]): T = {
     inp.toEither match {
       case Right(Some(result)) => result
-      case Right(None) =>  throw new Exception("object not Found")
+      case Right(None) =>  throw NotFoundException()
       case Left(ex) => throw ex
     }
   }

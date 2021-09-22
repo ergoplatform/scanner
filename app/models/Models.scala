@@ -1,9 +1,10 @@
 package models
 
+import org.ergoplatform.http.api.ApiCodecs
 import org.ergoplatform.modifiers.history.Header
 import org.ergoplatform.{DataInput, ErgoBox, Input}
 import org.ergoplatform.modifiers.mempool.ErgoTransaction
-import org.ergoplatform.nodeView.wallet.scanning.ScanningPredicate
+import org.ergoplatform.nodeView.wallet.scanning.{ScanningPredicate, ScanningPredicateJsonCodecs}
 import sigmastate.serialization.ValueSerializer
 import scorex.util.ModifierId
 import scorex.util.encode.Base16
@@ -14,7 +15,18 @@ object Types {
   type Identifier = String
 }
 
-case class Scan(id: Types.ScanId, scanningPredicate: ScanningPredicate)
+case class ScanControllerModel(scanName: String , trackingRule: ScanningPredicate)
+case class ScanModel(scanId: Types.ScanId, scanName: String , trackingRule: ScanningPredicate)
+object Scan extends ApiCodecs {
+
+  def apply(scanControllerModel: ScanControllerModel): ScanModel = ScanModel(1, scanControllerModel.scanName, scanControllerModel.trackingRule)
+
+  import ScanningPredicateJsonCodecs._
+  import io.circe._, io.circe.generic.semiauto._
+
+  implicit val scanDecoder: Decoder[ScanControllerModel] = deriveDecoder[ScanControllerModel]
+  implicit val scanEncoder: Encoder[ScanModel] = deriveEncoder[ScanModel]
+}
 
 case class ExtractedBlockModel(headerId: String, parentId: String, height: Int, timestamp: Long)
 object ExtractedBlock {
@@ -23,7 +35,7 @@ object ExtractedBlock {
   }
 }
 
-case class ExtractionRulesModel(scans: Seq[Scan])
+case class ExtractionRulesModel(scans: Seq[ScanModel])
 
 case class ExtractedTransactionModel(id: String, headerId: String, inclusionHeight: Int, timestamp: Long)
 object ExtractedTransaction {
@@ -46,12 +58,12 @@ object ExtractedAsset {
   }
 }
 
-case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, spent: Boolean = false)
+case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, bytes: Array[Byte], spent: Boolean = false)
 object ExtractedOutput {
   def apply(ergoBox: ErgoBox, header: Header): ExtractedOutputModel = {
     ExtractedOutputModel(
       Base16.encode(ergoBox.id), ergoBox.transactionId, header.id, ergoBox.value, ergoBox.creationHeight,
-      ergoBox.index, Base16.encode(ergoBox.ergoTree.bytes), header.timestamp
+      ergoBox.index, Base16.encode(ergoBox.ergoTree.bytes), header.timestamp, ergoBox.bytes
     )
   }
 }
@@ -70,9 +82,9 @@ object ExtractedDataInput {
   }
 }
 
-case class ExtractionOutputResultModel(extractedOutput: ExtractedOutputModel, extractedRegisters: Seq[ExtractedRegisterModel], extractedAssets: Seq[ExtractedAssetModel], extractedTransaction: ExtractedTransactionModel, extractedDataInput: Seq[ExtractedDataInputModel])
+case class ExtractionOutputResultModel(extractedOutput: ExtractedOutputModel, extractedRegisters: Seq[ExtractedRegisterModel], extractedAssets: Seq[ExtractedAssetModel], extractedTransaction: ExtractedTransactionModel, extractedDataInput: Seq[ExtractedDataInputModel], scanIds: Seq[Types.ScanId])
 object ExtractionOutputResult {
-  def apply(ergoBox: ErgoBox, header: Header, tx: ErgoTransaction): ExtractionOutputResultModel = {
+  def apply(ergoBox: ErgoBox, header: Header, tx: ErgoTransaction, scanIds: Seq[Types.ScanId]): ExtractionOutputResultModel = {
     val extractedOutput = ExtractedOutput(ergoBox, header)
     val extractedRegisters = ergoBox.additionalRegisters.map(
       register => ExtractedRegister(register, ergoBox)
@@ -85,7 +97,7 @@ object ExtractionOutputResult {
     val extractedDataInputs = tx.dataInputs.zipWithIndex.map {
       case (dataInput, index) => ExtractedDataInput(dataInput, index.toShort, tx.id, header)
     }
-    ExtractionOutputResultModel(extractedOutput, extractedRegisters.toSeq, extractedAssets.toSeq, extractedTransaction, extractedDataInputs.toSeq)
+    ExtractionOutputResultModel(extractedOutput, extractedRegisters.toSeq, extractedAssets.toSeq, extractedTransaction, extractedDataInputs.toSeq, scanIds)
   }
 }
 

@@ -7,4 +7,5 @@ object Configuration {
     case Right(conf) => conf
     case Left(error) => throw new Exception(error.toString())
   }
+
 }

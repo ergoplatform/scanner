@@ -9,13 +9,10 @@ import utils.NodeProcess
 
 import scala.annotation.tailrec
 import models._
-import settings.Rules
 
 
-class ScannerTask @Inject()(
-                             extractedBlockDAO: ExtractedBlockDAO,
-                             extractionResultDAO: ExtractionResultDAO,
-                             forkedResultDAO: ForkedResultDAO) {
+class ScannerTask @Inject()( extractedBlockDAO: ExtractedBlockDAO, extractionResultDAO: ExtractionResultDAO,
+                             forkedResultDAO: ForkedResultDAO, scanDAO: ScanDAO) {
 
   private val logger: Logger = Logger(this.getClass)
 
@@ -28,7 +25,7 @@ class ScannerTask @Inject()(
       NodeProcess.mainChainHeaderAtHeight(newHeight) match {
         case Some(header) =>
           logger.info(s"Processing block at height: $newHeight, id: ${header.id}")
-          val extractionResult = NodeProcess.processTransactions(header.id, Rules.exampleRules)
+          val extractionResult = NodeProcess.processTransactions(header.id, scanDAO.selectAll)
           extractionResultDAO.storeOutputsAndRelatedData(extractionResult.createdOutputs, ExtractedBlock(header))
           extractionResultDAO.spendOutputsAndStoreRelatedData(extractionResult.extractedInputs)
           val extractedCount = extractionResult.createdOutputs.length

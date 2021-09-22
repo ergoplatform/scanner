@@ -2,13 +2,15 @@ package dao
 
 import javax.inject.{Inject, Singleton}
 import models.ExtractedOutputModel
+import models.Types.ScanId
+import org.ergoplatform.ErgoBox
+import org.ergoplatform.wallet.boxes.ErgoBoxSerializer
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.util.Try
 
 trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
   import profile.api._
@@ -23,7 +25,9 @@ trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def ergoTree = column[String]("ERGO_TREE")
     def timestamp = column[Long]("TIMESTAMP")
     def spent = column[Boolean]("SPENT", O.Default(false))
-    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def bytes = column[Array[Byte]]("BYTES")
+    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, bytes, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def pk = primaryKey("PK_OUTPUTS", (boxId, headerId))
   }
 
   class OutputForkTable(tag: Tag) extends Table[ExtractedOutputModel](tag, "OUTPUTS_FORK") {
@@ -36,19 +40,23 @@ trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def ergoTree = column[String]("ERGO_TREE")
     def timestamp = column[Long]("TIMESTAMP")
     def spent = column[Boolean]("SPENT", O.Default(false))
-    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def bytes = column[Array[Byte]]("BYTES")
+    def pk = primaryKey("PK_OUTPUTS_FORK", (boxId, headerId))
+    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, bytes, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
   }
 }
 
 @Singleton()
 class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider)(implicit executionContext: ExecutionContext)
-  extends DbUtils with OutputComponent
+  extends DbUtils with OutputComponent with ExtractedBlockComponent with ScanComponent
     with HasDatabaseConfigProvider[JdbcProfile] {
 
   import profile.api._
 
   val outputs = TableQuery[OutputTable]
   val outputsFork = TableQuery[OutputForkTable]
+  val scan_outputs = TableQuery[ScanOutputsPivotTable]
+  val extractedBlocks = TableQuery[ExtractedBlockTable]
 
   /**
    * inserts a output into db
@@ -115,4 +123,21 @@ class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvide
   def getBoxIdsByHeaderIdQuery(headerId: String): DBIO[Seq[String]] = {
     outputs.filter(_.headerId === headerId).map(_.boxId).result
   }
+
+  /**
+  *
+   * @param scanId Types.ScanId (Int)
+   * @param maxHeight Int
+   * @param minInclusionHeight Int
+   * @return Sequence of Ergo boxes that are unspent and mined before "maxHeight" (for consider minConfirmation) and also mined after "minInclusionHeight"
+   */
+  def selectUnspentBoxesWithScanId(scanId: ScanId, maxHeight: Int, minInclusionHeight: Int): Seq[ErgoBox] = {
+    val query = for {
+      ((scans, outs), blocks) <- scan_outputs.filter(_.scanId === scanId) join
+        outputs on ((scanFK, output) => {scanFK.boxId === output.boxId && scanFK.headerId === output.headerId}) join
+        extractedBlocks.filter(block =>  {block.height <= maxHeight && block.height > minInclusionHeight}) on (_._2.headerId === _.id)
+    } yield (outs.bytes)
+    execAwait(query.result).map(ErgoBoxSerializer.parseBytes)
+  }
+
 }
