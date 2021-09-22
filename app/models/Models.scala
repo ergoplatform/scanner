@@ -58,12 +58,12 @@ object ExtractedAsset {
   }
 }
 
-case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, scanId: Types.ScanId, bytes: Array[Byte], spent: Boolean = false)
+case class ExtractedOutputModel(boxId: String, txId: String, headerId: String, value: Long, creationHeight: Int, index: Short, ergoTree: String, timestamp: Long, bytes: Array[Byte], spent: Boolean = false)
 object ExtractedOutput {
-  def apply(ergoBox: ErgoBox, header: Header, scanId: Types.ScanId): ExtractedOutputModel = {
+  def apply(ergoBox: ErgoBox, header: Header): ExtractedOutputModel = {
     ExtractedOutputModel(
       Base16.encode(ergoBox.id), ergoBox.transactionId, header.id, ergoBox.value, ergoBox.creationHeight,
-      ergoBox.index, Base16.encode(ergoBox.ergoTree.bytes), header.timestamp, scanId, ergoBox.bytes
+      ergoBox.index, Base16.encode(ergoBox.ergoTree.bytes), header.timestamp, ergoBox.bytes
     )
   }
 }
@@ -82,10 +82,10 @@ object ExtractedDataInput {
   }
 }
 
-case class ExtractionOutputResultModel(extractedOutput: ExtractedOutputModel, extractedRegisters: Seq[ExtractedRegisterModel], extractedAssets: Seq[ExtractedAssetModel], extractedTransaction: ExtractedTransactionModel, extractedDataInput: Seq[ExtractedDataInputModel])
+case class ExtractionOutputResultModel(extractedOutput: ExtractedOutputModel, extractedRegisters: Seq[ExtractedRegisterModel], extractedAssets: Seq[ExtractedAssetModel], extractedTransaction: ExtractedTransactionModel, extractedDataInput: Seq[ExtractedDataInputModel], scanIds: Seq[Types.ScanId])
 object ExtractionOutputResult {
-  def apply(ergoBox: ErgoBox, header: Header, tx: ErgoTransaction, scanId: Types.ScanId): ExtractionOutputResultModel = {
-    val extractedOutput = ExtractedOutput(ergoBox, header, scanId)
+  def apply(ergoBox: ErgoBox, header: Header, tx: ErgoTransaction, scanIds: Seq[Types.ScanId]): ExtractionOutputResultModel = {
+    val extractedOutput = ExtractedOutput(ergoBox, header)
     val extractedRegisters = ergoBox.additionalRegisters.map(
       register => ExtractedRegister(register, ergoBox)
     )
@@ -97,7 +97,7 @@ object ExtractionOutputResult {
     val extractedDataInputs = tx.dataInputs.zipWithIndex.map {
       case (dataInput, index) => ExtractedDataInput(dataInput, index.toShort, tx.id, header)
     }
-    ExtractionOutputResultModel(extractedOutput, extractedRegisters.toSeq, extractedAssets.toSeq, extractedTransaction, extractedDataInputs.toSeq)
+    ExtractionOutputResultModel(extractedOutput, extractedRegisters.toSeq, extractedAssets.toSeq, extractedTransaction, extractedDataInputs.toSeq, scanIds)
   }
 }
 

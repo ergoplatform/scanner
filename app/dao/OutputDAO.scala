@@ -24,10 +24,10 @@ trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def index = column[Short]("INDEX")
     def ergoTree = column[String]("ERGO_TREE")
     def timestamp = column[Long]("TIMESTAMP")
-    def scanId = column[Int]("SCAN_ID")
     def spent = column[Boolean]("SPENT", O.Default(false))
     def bytes = column[Array[Byte]]("BYTES")
-    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, scanId, bytes, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, bytes, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def pk = primaryKey("PK_OUTPUTS", (boxId, headerId))
   }
 
   class OutputForkTable(tag: Tag) extends Table[ExtractedOutputModel](tag, "OUTPUTS_FORK") {
@@ -39,23 +39,23 @@ trait OutputComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def index = column[Short]("INDEX")
     def ergoTree = column[String]("ERGO_TREE")
     def timestamp = column[Long]("TIMESTAMP")
-    def scanId = column[Int]("SCAN_ID")
     def spent = column[Boolean]("SPENT", O.Default(false))
     def bytes = column[Array[Byte]]("BYTES")
-    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, scanId, bytes, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
+    def pk = primaryKey("PK_OUTPUTS_FORK", (boxId, headerId))
+    def * = (boxId, txId, headerId, value, creationHeight, index, ergoTree, timestamp, bytes, spent) <> (ExtractedOutputModel.tupled, ExtractedOutputModel.unapply)
   }
 }
 
 @Singleton()
 class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider)(implicit executionContext: ExecutionContext)
-  extends DbUtils with OutputComponent with ExtractedBlockComponent
+  extends DbUtils with OutputComponent with ExtractedBlockComponent with ScanComponent
     with HasDatabaseConfigProvider[JdbcProfile] {
 
   import profile.api._
 
   val outputs = TableQuery[OutputTable]
   val outputsFork = TableQuery[OutputForkTable]
-
+  val scan_outputs = TableQuery[ScanOutputsPivotTable]
   val extractedBlocks = TableQuery[ExtractedBlockTable]
 
   /**
@@ -133,7 +133,9 @@ class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvide
    */
   def selectUnspentBoxesWithScanId(scanId: ScanId, maxHeight: Int, minInclusionHeight: Int): Seq[ErgoBox] = {
     val query = for {
-      (outs, blocks) <- outputs.filter(out => out.scanId === scanId && !out.spent) join extractedBlocks on ((box, block) => {box.headerId === block.id && block.height <= maxHeight && block.height > minInclusionHeight})
+      ((scans, outs), blocks) <- scan_outputs.filter(_.scanId === scanId) join
+        outputs on ((scanFK, output) => {scanFK.boxId === output.boxId && scanFK.headerId === output.headerId}) join
+        extractedBlocks.filter(block =>  {block.height <= maxHeight && block.height > minInclusionHeight}) on (_._2.headerId === _.id)
     } yield (outs.bytes)
     execAwait(query.result).map(ErgoBoxSerializer.parseBytes)
   }

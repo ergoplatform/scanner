@@ -6,12 +6,13 @@ import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
 import com.google.common.hash.{BloomFilter, Funnels}
+import models.Types.ScanId
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext}
 
 
-class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, transactionDAO: TransactionDAO, dataInputDAO: DataInputDAO, inputDAO: InputDAO, outputDAO: OutputDAO, assetDAO: AssetDAO, registerDAO: RegisterDAO, protected val dbConfigProvider: DatabaseConfigProvider) (implicit executionContext: ExecutionContext)
+class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, transactionDAO: TransactionDAO, dataInputDAO: DataInputDAO, inputDAO: InputDAO, outputDAO: OutputDAO, assetDAO: AssetDAO, registerDAO: RegisterDAO, scanDAO: ScanDAO, protected val dbConfigProvider: DatabaseConfigProvider) (implicit executionContext: ExecutionContext)
     extends DbUtils with HasDatabaseConfigProvider[JdbcProfile] {
 
   import profile.api._
@@ -76,6 +77,7 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
     var outputs: Seq[ExtractedOutputModel] = Seq()
     var assets: Seq[ExtractedAssetModel] = Seq()
     var registers: Seq[ExtractedRegisterModel] = Seq()
+    var scan_FKs: Seq[(ScanId, String, String)] = Seq()
 
     createdOutputs.foreach(obj => {
       outputs = outputs :+ obj.extractedOutput
@@ -83,6 +85,7 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
       dataInputs = dataInputs ++ obj.extractedDataInput
       assets = assets ++ obj.extractedAssets
       registers = registers ++ obj.extractedRegisters
+      scan_FKs = scan_FKs ++ obj.scanIds.map((_, obj.extractedOutput.boxId, obj.extractedOutput.headerId))
     })
 
     val action = for {
@@ -92,6 +95,7 @@ class ExtractionResultDAO @Inject() (extractedBlockDAO: ExtractedBlockDAO, trans
         _ <- outputDAO.insert(outputs)
         _ <- assetDAO.insert(assets)
         _ <- registerDAO.insert(registers)
+        _ <- scanDAO.insertFKs(scan_FKs)
     } yield {
 
     }

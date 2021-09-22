@@ -2,6 +2,7 @@ package utils
 
 import io.circe.Decoder
 import io.circe.parser.parse
+import models.Types.ScanId
 import models._
 import org.ergoplatform.ErgoBox
 import org.ergoplatform.modifiers.ErgoFullBlock
@@ -73,13 +74,14 @@ object NodeProcess {
    *
    * @param box ErgoBox
    * @param rules scanRules
-   * @return Int, If the box matches, the first scan ID will be returned, otherwise 0
+   * @return Seq[ScanId], Sequence of match rules (scanID)
    */
-  def checkBox(box: ErgoBox, rules: Seq[ScanModel]): Int = {
+  def checkBox(box: ErgoBox, rules: Seq[ScanModel]): Seq[ScanId] = {
+    var validScanIds: Seq[ScanId] = Seq.empty
     rules.foreach(scanRule => {
-      if (scanRule.trackingRule.filter(box)) return scanRule.scanId
+      if (scanRule.trackingRule.filter(box)) validScanIds = validScanIds :+ scanRule.scanId
     })
-    0
+    validScanIds
   }
 
   def processTransactions(
@@ -102,13 +104,13 @@ object NodeProcess {
           )
       }
       tx.outputs.foreach { out =>
-        val scanId = checkBox(out, extractionRules.scans)
-        if (scanId > 0)
+        val scanIds = checkBox(out, extractionRules.scans)
+        if (scanIds.nonEmpty)
           createdOutputs += ExtractionOutputResult(
             out,
             ergoFullBlock.header,
             tx,
-            scanId
+            scanIds
           )
       }
     }

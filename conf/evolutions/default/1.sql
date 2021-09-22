@@ -128,10 +128,9 @@ CREATE TABLE outputs
     index                   INTEGER     NOT NULL,
     ergo_tree               VARCHAR     NOT NULL,
     timestamp               BIGINT      NOT NULL,
-    scan_id                 INT         NOT NULL,
     bytes                   BLOB        NOT NULL,
     spent                   BOOLEAN     NOT NULL,
-    PRIMARY KEY (box_id, header_id)
+    CONSTRAINT PK_OUTPUTS PRIMARY KEY (box_id, header_id)
 );
 
 CREATE INDEX "outputs__box_id" ON outputs (box_id);
@@ -139,7 +138,6 @@ CREATE INDEX "outputs__tx_id" ON outputs (tx_id);
 CREATE INDEX "outputs__header_id" ON outputs (header_id);
 CREATE INDEX "outputs__ergo_tree" ON outputs (ergo_tree);
 CREATE INDEX "outputs__timestamp" ON outputs (timestamp);
-CREATE INDEX "outputs__scan_id" ON outputs (scan_id);
 
 
 CREATE TABLE outputs_fork
@@ -152,10 +150,9 @@ CREATE TABLE outputs_fork
     index                   INTEGER     NOT NULL,
     ergo_tree               VARCHAR     NOT NULL,
     timestamp               BIGINT      NOT NULL,
-    scan_id                 INT         NOT NULL,
     bytes                   BLOB        NOT NULL,
     spent                   BOOLEAN     NOT NULL,
-    PRIMARY KEY (box_id, header_id)
+    CONSTRAINT PK_OUTPUTS_FORK PRIMARY KEY (box_id, header_id)
 );
 
 CREATE INDEX "outputs_fork_f__box_id" ON outputs_fork (box_id);
@@ -163,7 +160,6 @@ CREATE INDEX "outputs_fork_f__tx_id" ON outputs_fork (tx_id);
 CREATE INDEX "outputs_fork_f__header_id" ON outputs_fork (header_id);
 CREATE INDEX "outputs_fork_f__ergo_tree" ON outputs_fork (ergo_tree);
 CREATE INDEX "outputs_fork_f__timestamp" ON outputs_fork (timestamp);
-CREATE INDEX "outputs_fork_f__scan_id" ON outputs (scan_id);
 
 
 CREATE TABLE assets
@@ -229,5 +225,16 @@ CREATE TABLE scans
 );
 
 CREATE INDEX "scans__scan_id" ON scans (scan_id);
+
+
+CREATE TABLE scan_outputs_pivot (
+    scan_id     integer REFERENCES scans (scan_id) ON DELETE SET NULL,
+    box_id      VARCHAR(64),
+    header_id   VARCHAR(64),
+    FOREIGN KEY (box_id, header_id) REFERENCES outputs (box_id, header_id) ON DELETE SET NULL,
+    PRIMARY KEY (scan_id, box_id, header_id)
+);
+
+CREATE INDEX "scan_outputs_pivot__scan_id" ON scan_outputs_pivot (scan_id);
 
 -- !Down

@@ -1,16 +1,16 @@
 package dao
 
 import javax.inject.{Inject, Singleton}
+import models.Types.ScanId
 import models._
 import org.ergoplatform.nodeView.wallet.scanning.{ScanningPredicate, ScanningPredicateSerializer}
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import utils.DbUtils
 
-import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 
-trait ScanComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
+trait ScanComponent extends OutputComponent{ self: HasDatabaseConfigProvider[JdbcProfile] =>
   import profile.api._
 
   implicit val ScanningPredicateColumnType = MappedColumnType.base[ScanningPredicate, Array[Byte]](
@@ -24,6 +24,20 @@ trait ScanComponent { self: HasDatabaseConfigProvider[JdbcProfile] =>
     def scanningPredicate = column[ScanningPredicate]("SCANNING_PREDICATE")
     def * = (scanId, scanName, scanningPredicate) <> (ScanModel.tupled, ScanModel.unapply)
   }
+
+  private val scansTable = TableQuery[ScanTable]
+  private val outputsTable = TableQuery[OutputTable]
+
+  class ScanOutputsPivotTable(tag: Tag) extends Table[(Int, String, String)](tag, "SCAN_OUTPUTS_PIVOT") {
+    def scanId = column[Int]("SCAN_ID", O.PrimaryKey)
+    def boxId = column[String]("BOX_ID")
+    def headerId = column[String]("HEADER_ID")
+    def * = (scanId, boxId, headerId)
+    def pk = primaryKey("PK_OUTPUTS", (boxId, headerId))
+    def outputs = foreignKey("OUTPUT_FK", (boxId, headerId), outputsTable)(ot => (ot.boxId, ot.headerId), onDelete=ForeignKeyAction.SetNull)
+    def scans = foreignKey("SCAN_FK", scanId, scansTable)(_.scanId, onDelete=ForeignKeyAction.SetNull)
+  }
+
 }
 
 @Singleton()
@@ -34,6 +48,7 @@ class ScanDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider)
   import profile.api._
 
   val scans = TableQuery[ScanTable]
+  val scanOutputsPivot = TableQuery[ScanOutputsPivotTable]
 
   /**
    * inserts a scan into db
@@ -45,6 +60,13 @@ class ScanDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvider)
   def create(scan: ScanModel) : ScanModel = {
     execAwait(insertQuery += scan)
   }
+
+  /**
+  *
+   * @param scan_FKs: Seq[(ScanId, box_id, header_id)]
+   * @return
+   */
+  def insertFKs(scan_FKs: Seq[(ScanId, String, String)]): DBIO[Option[Int]] = scanOutputsPivot ++= scan_FKs
 
   /**
    * @param scanId Types.ScanId
