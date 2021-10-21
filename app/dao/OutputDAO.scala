@@ -134,7 +134,7 @@ class OutputDAO @Inject() (protected val dbConfigProvider: DatabaseConfigProvide
   def selectUnspentBoxesWithScanId(scanId: ScanId, maxHeight: Int, minInclusionHeight: Int): Seq[ErgoBox] = {
     val query = for {
       ((scans, outs), blocks) <- scan_outputs.filter(_.scanId === scanId) join
-        outputs on ((scanFK, output) => {scanFK.boxId === output.boxId && scanFK.headerId === output.headerId}) join
+        outputs.filter(!_.spent) on ((scanFK, output) => {scanFK.boxId === output.boxId && scanFK.headerId === output.headerId}) join
         extractedBlocks.filter(block =>  {block.height <= maxHeight && block.height > minInclusionHeight}) on (_._2.headerId === _.id)
     } yield (outs.bytes)
     execAwait(query.result).map(ErgoBoxSerializer.parseBytes)
